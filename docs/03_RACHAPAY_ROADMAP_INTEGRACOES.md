@@ -1,0 +1,96 @@
+# 03 — API, integrações e roadmap
+
+> **Estado em 20/10/2026:** a API, os contratos e os webhooks abaixo são a **especificação** do Ciclo 1 — nenhuma rota existe ainda. A tabela de roadmap no fim mostra a situação real.
+
+## Autenticação
+
+| Quem | Como |
+|---|---|
+| Organizador | `Authorization: Bearer rpo_…` (devolvido ao criar a conta) |
+| Convidado | `X-Share-Token: rps_…` |
+| Sistema/estabelecimento | `Authorization: Bearer rpk_…` (`npm run tenant:create -- --name "…"`); escopos e `actor_type` (HUMAN, SYSTEM, AI) por chave; `X-Actor-Id` identifica a pessoa para auditoria |
+| Administrador da plataforma | `Authorization: Bearer <ADMIN_TOKEN>` + `X-Actor-Id` |
+
+Erros: `{ "error": { "code", "message", "details", "correlationId" } }`.
+
+## Rotas (44)
+
+```
+GET  /health  /ready  /v1/config
+POST /v1/bills                                criar (anônimo = Pessoal; chave = tenant)
+GET  /v1/bills/{id}         PATCH /v1/bills/{id}         POST /v1/bills/{id}/cancel
+POST /v1/bills/{id}/participants      PATCH|DELETE /v1/bills/{id}/participants/{pid}
+POST /v1/bills/{id}/items             PUT /v1/bills/{id}/items/{itemId}/assignees   DELETE …/items/{itemId}
+POST /v1/bills/{id}/splits/preview    POST /v1/bills/{id}/splits    POST /v1/bills/{id}/splits/unlock
+GET  /v1/bills/{id}/reconciliation    GET /v1/bills/{id}/ledger     GET /v1/bills/{id}/explanation
+POST /v1/bills/{id}/receipt           (sugestão de itens: texto ou foto)
+POST /v1/payments                     (header Idempotency-Key)
+POST /v1/bills/{id}/payments/{pid}/confirm|reject     (organizador, pagamento MANUAL)
+POST /v1/refunds
+POST /v1/webhooks/payments/{provider}                 (entrada assinada do PSP)
+POST /v1/bills/{id}/payments/{pid}/simulate           (só com SANDBOX_ENABLED)
+POST|GET /v1/establishments
+POST /v1/integrations/erp/{provider}/sync   POST /v1/integrations/erp/{provider}/ack
+POST|GET /v1/webhook-endpoints   GET /v1/webhook-deliveries   POST /v1/webhook-deliveries/{id}/retry
+GET  /v1/knowledge   GET /v1/knowledge/resolve   POST /v1/knowledge   POST /v1/knowledge/{id}/transition
+GET  /v1/cbr/cases   GET /v1/cbr/cases/{id}/similar   POST /v1/cbr/cases/{id}/resolve   POST /v1/cbr/proposals
+GET  /v1/metrics     GET /v1/skills
+```
+
+## Contrato canônico de ERP (NexFlow e qualquer outro)
+
+`POST /v1/integrations/erp/generic/sync` com chave de escopo `erp:sync`:
+
+```json
+{
+  "externalReference": "comanda-42",
+  "establishmentExternalId": "loja-centro",
+  "tableLabel": "12",
+  "kind": "RESTAURANT",
+  "currency": "BRL",
+  "items": [
+    { "externalRef": "p1", "description": "Picanha", "unitPriceCents": 8990, "quantity": 1 }
+  ],
+  "discountCents": 0,
+  "serviceBp": 1000,
+  "tipCents": 0
+}
+```
+
+- Idempotente por `externalReference`: `CREATED` (devolve `shareUrl` para o QR da mesa), `UNCHANGED`, `UPDATED` (enquanto em edição).
+- Depois da divisão confirmada, mudança de itens → `409 ERP_DIVERGENCE` + caso CBR (ver ponto em aberto 2 em `02`).
+- Baixa no ERP: assine `payment.confirmed` (baixa parcial, traz `participantId` e `amountCents`) e `bill.settled` (fechar mesa).
+- Confirmação do ERP: `POST …/ack { externalReference, event, erpDocument }` → ledger `ERP_ACKNOWLEDGED`.
+- **NexFlow**: poderá integrar mandando este payload. A especificação da API do NexFlow existe (vault VHAREN, `NexFlow/.mds dev/ERP_COMPLETO.md` § 6): é um ERP de serviços (vendas, contas a receber, formas de pagamento, Pix via Bradesco/Inter, NFS-e) **sem conceito de mesa ou comanda**. O adapter próprio (`ERPAdapter`) continua **BLOQUEADO** — agora por decisão de encaixe de domínio (o que, no NexFlow, vira uma SharedBill), não por falta de documento.
+
+## Webhooks de saída
+
+Corpo: `{ "id", "type", "version": "2026-10-01", "createdAt", "data" }`.
+Cabeçalhos: `X-RachaPay-Event`, `X-RachaPay-Event-Id` (deduplique por ele), `X-RachaPay-Delivery`, `X-RachaPay-Signature: t=<unix>,v1=<hmac>`.
+Verificação: `HMAC_SHA256(secret, "<t>.<corpo bruto>")`, rejeite `t` com mais de 5 min.
+Entrega at-least-once, até 8 tentativas (10 s, 20 s, 40 s… até 6 h), depois `DEAD`; reprocessável.
+
+> **Inconsistência a decidir:** 8 tentativas dobrando a partir de 10 s chegam no máximo a 1.280 s (~21 min) de espera, não 6 h. Ou a política é "dobrar até 6 h por intervalo" com mais tentativas (≈ 16), ou o teto real é ~21 min. A política final vira regra da Expert Library (`WEBHOOK.RETRY`) e é fixada por teste.
+
+Eventos: `bill.created, split.confirmed, payment.created, payment.confirmed, payment.failed, payment.refunded, payment.chargedback, bill.partially_paid, bill.settled, bill.reopened, bill.cancelled`.
+
+## Integrar um PSP real (próximo grande passo depois do Ciclo 1)
+
+1. Escolher PSP com Pix + split de recebíveis, contrato e credenciais de sandbox.
+2. Implementar `PaymentProvider` em `modules/payments/providers.ts`: `createPayment` (cobrança Pix/checkout tokenizado) e `verifyWebhook` (assinatura do PSP → `ProviderEvent`).
+3. Para PSP remoto: criar o pagamento como `CREATED`, efetivar a transação, chamar o PSP **fora** da trava da conta e atualizar para `PENDING` com a referência.
+4. Estorno via API do PSP em `requestRefund` (para provedores não implementados, responder 501 `REFUND_NOT_AVAILABLE`).
+5. Liquidação/split financeiro: configurada no PSP; o dinheiro não passa pela conta do RachaPay.
+6. Registrar `PAYMENT.EXPIRY` específico do PSP na Expert Library (escopo PSP).
+
+## Roadmap por camadas (do Guia Mestre) e situação
+
+| Etapa | Situação em 20/10/2026 |
+|---|---|
+| E0 constituição/domínio | documentado (01, 02); domínio em código PENDENTE |
+| E1 Split Engine | PENDENTE |
+| E2 Web/PWA + compartilhamento | PENDENTE |
+| E3 Ledger + conciliação | PENDENTE |
+| E4 Pagamento piloto | manual + sandbox PENDENTE; PSP real BLOQUEADO (parceiro) |
+| E5 Business + NexFlow | API Business, ERP canônico, webhooks e painel PENDENTE; adapter NexFlow BLOQUEADO (decisão de domínio) |
+| E6–E11 | pendentes, conforme Go/No-Go do Guia Mestre §35 |
