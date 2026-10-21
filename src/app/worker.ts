@@ -7,6 +7,7 @@ import { withoutScope, withScope } from '../infra/db/tx.ts';
 import type { Logger } from '../infra/log.ts';
 import { applyEvent } from '../modules/payments/service.ts';
 import { deliverWebhooks, type DeliveryDeps } from '../modules/integrations/webhooks/delivery.ts';
+import { runRetention } from '../modules/privacy/retention.ts';
 
 export async function expireDuePayments(pool: Pool, clock: Clock, logger: Logger, limit = 200): Promise<{ expired: number; failed: number }> {
   const now = clock.now();
@@ -36,13 +37,21 @@ export async function expireDuePayments(pool: Pool, clock: Clock, logger: Logger
   return { expired, failed };
 }
 
+const RETENTION_EVERY_MS = 60 * 60 * 1000;
+
 export function startWorker(deps: DeliveryDeps, intervalMs = 10_000): () => void {
   let running = false;
+  let lastRetention = 0;
   const cycle = async () => {
     const expiry = await expireDuePayments(deps.pool, deps.clock, deps.logger);
     if (expiry.expired || expiry.failed) deps.logger.info('expiry_cycle', expiry);
     const hooks = await deliverWebhooks(deps);
     if (hooks.delivered || hooks.failed || hooks.dead) deps.logger.info('webhook_cycle', hooks);
+    if (deps.clock.now().getTime() - lastRetention >= RETENTION_EVERY_MS) {
+      lastRetention = deps.clock.now().getTime();
+      const retention = await runRetention(deps.pool, deps.clock, deps.logger);
+      if (retention.anonymized || retention.purgedKeys) deps.logger.info('retention_cycle', retention);
+    }
   };
   const timer = setInterval(() => {
     if (running) return;

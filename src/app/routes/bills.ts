@@ -18,6 +18,7 @@ import { auditAllowed, preAuthorize } from '../guard.ts';
 import { cents, param, parseBody, uuid } from '../http-helpers.ts';
 import type { AppDeps } from '../deps.ts';
 import { routeKit } from './common.ts';
+import { anonymizeOnRequest } from '../../modules/privacy/retention.ts';
 
 const name60 = z.string().trim().min(1).max(60);
 
@@ -191,6 +192,16 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
       const { reason } = parseBody(z.object({ reason: z.string().trim().max(200).default('cancelada pelo organizador') }).strict(), req);
       await bills.cancelBill(client, ctx, billId, reason);
     }),
+  );
+
+  // LGPD (D21): o titular pede a anonimização já; o ledger (só ids) continua íntegro.
+  router.post(
+    '/v1/bills/:id/anonymize',
+    onBill(
+      'bill.anonymize',
+      async (client, ctx, _req, billId) => ({ anonymized: await anonymizeOnRequest(client, billId, ctx.now) }),
+      { respond: 'result' },
+    ),
   );
 
   router.post(

@@ -27,6 +27,9 @@ export const CONTENT_SCHEMAS = {
   'RATE_LIMIT.ANON_BILL_CREATE': z
     .object({ perMinute: z.number().int().min(1).max(1000), perHour: z.number().int().min(1).max(10_000) })
     .strict(),
+  'RETENTION.PERSONAL_DATA': z
+    .object({ terminalDays: z.number().int().min(30).max(3650), abandonedDays: z.number().int().min(30).max(3650) })
+    .strict(),
   'WEBHOOK.RETRY': z
     .object({
       maxAttempts: z.number().int().min(1).max(30),

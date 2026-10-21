@@ -519,6 +519,17 @@ function confirmedSections(api, bill, refresh, token, opts = {}) {
         },
         { class: 'danger' },
       ),
+    bill.state === 'SETTLED' &&
+      actionButton(
+        'Apagar nomes deste racha',
+        async () => {
+          if (!confirm('Trocar nomes e descrições por rótulos neutros e desativar os links? O registro financeiro continua íntegro. Não dá para desfazer.')) return;
+          await api.post(`/v1/bills/${bill.id}/anonymize`);
+          toast('Dados pessoais apagados. Os links deste racha foram desativados.');
+          location.hash = opts.business ? '#/b/mesas' : '#/';
+        },
+        { class: 'danger', 'data-testid': 'anonymize' },
+      ),
     evidence,
   );
 

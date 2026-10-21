@@ -19,6 +19,7 @@ export const ACTIONS = {
   'bill.read': { scope: 'bills:read', financialCritical: false, humanOnly: false },
   'bill.edit': { scope: 'bills:write', financialCritical: false, humanOnly: false },
   'bill.cancel': { scope: 'bills:write', financialCritical: true, humanOnly: false },
+  'bill.anonymize': { scope: 'bills:write', financialCritical: false, humanOnly: true },
   'split.preview': { scope: 'bills:read', financialCritical: false, humanOnly: false },
   'split.confirm': { scope: 'bills:write', financialCritical: true, humanOnly: false },
   'split.unlock': { scope: 'bills:write', financialCritical: true, humanOnly: false },
