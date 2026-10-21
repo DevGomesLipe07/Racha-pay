@@ -18,12 +18,10 @@ export async function billView(client: PoolClient, billId: string, opts: { viewe
 
 async function renderBill(client: PoolClient, bill: BillRow, opts: { viewer: 'organizer' | 'guest' | 'tenant' }) {
   const agg = await loadAggregate(client, bill);
-  const [{ reconciliation, confirmed }, payments, version, allocations] = await Promise.all([
-    loadReconciliation(client, bill),
-    loadPayments(client, bill.id),
-    bill.active_split_version === null ? undefined : loadSplitVersion(client, bill.id, bill.active_split_version),
-    bill.active_split_version === null ? [] : loadAllocations(client, bill.id, bill.active_split_version),
-  ]);
+  const { reconciliation, confirmed } = await loadReconciliation(client, bill);
+  const payments = await loadPayments(client, bill.id);
+  const version = bill.active_split_version === null ? undefined : await loadSplitVersion(client, bill.id, bill.active_split_version);
+  const allocations = bill.active_split_version === null ? [] : await loadAllocations(client, bill.id, bill.active_split_version);
   const allocBy = new Map(allocations.map((a) => [a.participant_id, a]));
   const reconBy = new Map(reconciliation.participants.map((p) => [p.participantId, p]));
 

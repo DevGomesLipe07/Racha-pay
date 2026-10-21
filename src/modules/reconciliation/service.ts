@@ -55,15 +55,14 @@ export async function loadReconciliation(client: PoolClient, bill: BillRow): Pro
   }
   const version = await loadSplitVersion(client, bill.id, bill.active_split_version);
   if (!version) throw new Error(`versão ativa ${bill.active_split_version} ausente`);
-  const [allocations, payments, organizer, refunds] = await Promise.all([
-    loadAllocations(client, bill.id, bill.active_split_version),
-    loadPayments(client, bill.id),
-    client.query<{ id: string }>('SELECT id FROM participants WHERE bill_id = $1 AND is_organizer', [bill.id]),
-    client.query<{ participant_id: string; total: bigint }>(
-      'SELECT participant_id, SUM(amount_cents)::bigint AS total FROM manual_refunds WHERE bill_id = $1 GROUP BY participant_id',
-      [bill.id],
-    ),
-  ]);
+  // Um client pg executa uma consulta por vez: leituras em sequência na mesma transação.
+  const allocations = await loadAllocations(client, bill.id, bill.active_split_version);
+  const payments = await loadPayments(client, bill.id);
+  const organizer = await client.query<{ id: string }>('SELECT id FROM participants WHERE bill_id = $1 AND is_organizer', [bill.id]);
+  const refunds = await client.query<{ participant_id: string; total: bigint }>(
+    'SELECT participant_id, SUM(amount_cents)::bigint AS total FROM manual_refunds WHERE bill_id = $1 GROUP BY participant_id',
+    [bill.id],
+  );
   const organizerId = organizer.rows[0]?.id;
   const refundBy = new Map(refunds.rows.map((r) => [r.participant_id, r.total]));
   // Participantes sem alocação na versão ativa (entraram depois) têm devido zero.

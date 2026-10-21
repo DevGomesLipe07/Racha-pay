@@ -90,17 +90,16 @@ export async function loadBill(client: PoolClient, billId: string, opts: { forUp
 }
 
 export async function loadAggregate(client: PoolClient, bill: BillRow): Promise<BillAggregate> {
-  const [participants, items, assignees] = await Promise.all([
-    client.query<ParticipantRow>(
-      'SELECT id, name, position, is_organizer, percent_bp, manual_cents FROM participants WHERE bill_id = $1 ORDER BY position',
-      [bill.id],
-    ),
-    client.query<ItemRow>(
-      'SELECT id, description, unit_price_cents, quantity, external_ref, confirmed_version, position FROM items WHERE bill_id = $1 ORDER BY position',
-      [bill.id],
-    ),
-    client.query<AssigneeRow>('SELECT item_id, participant_id, weight FROM item_assignees WHERE bill_id = $1', [bill.id]),
-  ]);
+  // Um client pg executa uma consulta por vez: leituras em sequência na mesma transação.
+  const participants = await client.query<ParticipantRow>(
+    'SELECT id, name, position, is_organizer, percent_bp, manual_cents FROM participants WHERE bill_id = $1 ORDER BY position',
+    [bill.id],
+  );
+  const items = await client.query<ItemRow>(
+    'SELECT id, description, unit_price_cents, quantity, external_ref, confirmed_version, position FROM items WHERE bill_id = $1 ORDER BY position',
+    [bill.id],
+  );
+  const assignees = await client.query<AssigneeRow>('SELECT item_id, participant_id, weight FROM item_assignees WHERE bill_id = $1', [bill.id]);
   return { bill, participants: participants.rows, items: items.rows, assignees: assignees.rows };
 }
 

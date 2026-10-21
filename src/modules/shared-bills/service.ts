@@ -307,7 +307,8 @@ export interface SplitPlan {
 
 async function splitRules(client: PoolClient, ctx: ServiceContext, bill: BillRow) {
   const keys: KnowledgeKey[] = ['SERVICE_CHARGE.DEFAULT', 'DISCOUNT.ALLOCATION', 'TIP.ALLOCATION', 'ROUNDING.ALLOCATION'];
-  const resolved = await Promise.all(keys.map((k) => resolveKnowledge(client, k, { tenantId: ctx.tenantId, segment: bill.kind }, ctx.now)));
+  const resolved: ResolvedKnowledge<KnowledgeKey>[] = [];
+  for (const k of keys) resolved.push(await resolveKnowledge(client, k, { tenantId: ctx.tenantId, segment: bill.kind }, ctx.now));
   const service = resolved[0] as ResolvedKnowledge<'SERVICE_CHARGE.DEFAULT'>;
   return { maxServiceBp: service.content.maxBp, rules: resolved.map(provenance) };
 }
@@ -356,10 +357,8 @@ export async function planSplit(client: PoolClient, ctx: ServiceContext, bill: B
   if (pending.length === 0) throw conflict('NOTHING_TO_CONFIRM', 'não há itens novos para complementar a divisão');
   const mode: SplitMode = bill.split_mode === 'MANUAL' ? 'BY_ITEM' : bill.split_mode;
   const step = computeSplit(engineInput(agg, pending, { mode, discountCents: 0n, tipCents: 0n }, maxServiceBp));
-  const [previous, previousVersion] = await Promise.all([
-    loadAllocations(client, bill.id, bill.active_split_version),
-    loadSplitVersion(client, bill.id, bill.active_split_version),
-  ]);
+  const previous = await loadAllocations(client, bill.id, bill.active_split_version);
+  const previousVersion = await loadSplitVersion(client, bill.id, bill.active_split_version);
   if (!previousVersion) throw new Error('versão ativa ausente');
   const prevBy = new Map(previous.map((a) => [a.participant_id, a]));
   const cumulative = step.shares.map((s) => {
