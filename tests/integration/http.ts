@@ -7,6 +7,9 @@ import { RateLimiter } from '../../src/infra/http/rate-limit.ts';
 import { silentLogger } from '../../src/infra/log.ts';
 import { createProviderRegistry, SandboxProvider } from '../../src/modules/payments/providers.ts';
 import { expireDuePayments } from '../../src/app/worker.ts';
+import { deliverWebhooks } from '../../src/modules/integrations/webhooks/delivery.ts';
+import { policyFor } from '../../src/modules/integrations/webhooks/ssrf.ts';
+import { parseEncryptionKey } from '../../src/infra/crypto/aead.ts';
 import { TEST_DATABASE_URL, type TestDb } from './helpers.ts';
 
 export interface TestApp {
@@ -14,6 +17,7 @@ export interface TestApp {
   clock: ReturnType<typeof manualClock>;
   sandbox: SandboxProvider;
   runExpiry(): Promise<{ expired: number; failed: number }>;
+  runWebhooks(): Promise<{ delivered: number; failed: number; dead: number; fannedOut: number }>;
   close(): Promise<void>;
 }
 
@@ -29,6 +33,8 @@ export async function startApp(db: TestDb, env: Record<string, string> = {}): Pr
     clock,
     sandbox: providers.sandbox ?? new SandboxProvider(config.SANDBOX_WEBHOOK_SECRET),
     runExpiry: () => expireDuePayments(db.app, clock, silentLogger),
+    runWebhooks: () =>
+      deliverWebhooks({ pool: db.app, clock, logger: silentLogger, key: parseEncryptionKey(config.APP_ENCRYPTION_KEY), policy: policyFor('test') }),
     close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
   };
 }

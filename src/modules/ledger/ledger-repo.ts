@@ -3,6 +3,7 @@
 import { canonicalJson } from '../../infra/crypto/canonical-json.ts';
 import type { PoolClient } from '../../infra/db/pool.ts';
 import { chainNext, type LedgerEntry, type LedgerEntryDraft } from './chain.ts';
+import { enqueueFromLedger } from '../integrations/webhooks/outbox.ts';
 
 interface LedgerRow {
   bill_id: string;
@@ -55,6 +56,8 @@ export async function appendLedger(client: PoolClient, tenantId: string, draft: 
       entry.entryHash,
     ],
   );
+  // Outbox transacional: o aviso de webhook nasce na mesma transação do lançamento.
+  await enqueueFromLedger(client, tenantId, entry);
   return entry;
 }
 

@@ -6,6 +6,7 @@ import type { Pool } from '../infra/db/pool.ts';
 import { withoutScope, withScope } from '../infra/db/tx.ts';
 import type { Logger } from '../infra/log.ts';
 import { applyEvent } from '../modules/payments/service.ts';
+import { deliverWebhooks, type DeliveryDeps } from '../modules/integrations/webhooks/delivery.ts';
 
 export async function expireDuePayments(pool: Pool, clock: Clock, logger: Logger, limit = 200): Promise<{ expired: number; failed: number }> {
   const now = clock.now();
@@ -35,15 +36,18 @@ export async function expireDuePayments(pool: Pool, clock: Clock, logger: Logger
   return { expired, failed };
 }
 
-export function startWorker(deps: { pool: Pool; clock: Clock; logger: Logger }, intervalMs = 15_000): () => void {
+export function startWorker(deps: DeliveryDeps, intervalMs = 10_000): () => void {
   let running = false;
+  const cycle = async () => {
+    const expiry = await expireDuePayments(deps.pool, deps.clock, deps.logger);
+    if (expiry.expired || expiry.failed) deps.logger.info('expiry_cycle', expiry);
+    const hooks = await deliverWebhooks(deps);
+    if (hooks.delivered || hooks.failed || hooks.dead) deps.logger.info('webhook_cycle', hooks);
+  };
   const timer = setInterval(() => {
     if (running) return;
     running = true;
-    expireDuePayments(deps.pool, deps.clock, deps.logger)
-      .then((r) => {
-        if (r.expired || r.failed) deps.logger.info('expiry_cycle', r);
-      })
+    cycle()
       .catch((e: unknown) => deps.logger.error('worker_cycle_failed', { message: (e as Error).message }))
       .finally(() => {
         running = false;
