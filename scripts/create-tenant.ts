@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 import { newToken } from '../src/infra/crypto/hash.ts';
 import { createPool } from '../src/infra/db/pool.ts';
 
-const DEFAULT_SCOPES = ['bills:read', 'bills:write', 'payments:create', 'payments:write', 'erp:sync', 'webhooks:write', 'metrics:read', 'cbr:read', 'knowledge:read'];
+const DEFAULT_SCOPES = ['bills:read', 'bills:write', 'payments:create', 'payments:write', 'erp:sync', 'establishments:write', 'webhooks:write', 'metrics:read', 'cbr:read', 'knowledge:read'];
 
 const { values } = parseArgs({
   options: {

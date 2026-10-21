@@ -36,6 +36,7 @@ export const ACTIONS = {
   'knowledge.activate': { scope: 'knowledge:approve', financialCritical: true, humanOnly: true },
   'cbr.read': { scope: 'cbr:read', financialCritical: false, humanOnly: false },
   'cbr.resolve': { scope: 'cbr:write', financialCritical: true, humanOnly: true },
+  'establishment.manage': { scope: 'establishments:write', financialCritical: false, humanOnly: false },
   'erp.sync': { scope: 'erp:sync', financialCritical: false, humanOnly: false },
   'erp.ack': { scope: 'erp:sync', financialCritical: false, humanOnly: false },
   'webhooks.manage': { scope: 'webhooks:write', financialCritical: false, humanOnly: false },
