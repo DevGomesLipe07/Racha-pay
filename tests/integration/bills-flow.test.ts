@@ -2,6 +2,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTenant, inScope, openTestDb, PERSONAL_TENANT, resetDatabase, type TestDb } from './helpers.ts';
 import { api, createApiKey, startApp, type TestApp } from './http.ts';
+import { DEV_SECRETS } from '../../src/config.ts';
 
 let db: TestDb;
 let app: TestApp;
@@ -216,6 +217,21 @@ test('Web/PWA: serve o app com CSP estrita e não sai da pasta public', async ()
     const res = await fetch(`${app.base}${evil}`);
     assert.notEqual(res.status, 200, evil);
   }
+});
+
+test('/metrics: só com token de administrador; rótulos usam o padrão da rota, nunca ids', async () => {
+  const b = await newPersonalBill();
+  await api(app, 'GET', `/v1/bills/${b.id}`, { as: b.org });
+  assert.equal((await fetch(`${app.base}/metrics`)).status, 401);
+  assert.equal((await fetch(`${app.base}/metrics`, { headers: { authorization: 'Bearer errado' } })).status, 401);
+  const res = await fetch(`${app.base}/metrics`, { headers: { authorization: `Bearer ${DEV_SECRETS.ADMIN_TOKEN}` } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') ?? '', /text\/plain/);
+  const text = await res.text();
+  assert.match(text, /rachapay_http_requests_total\{route="GET \/v1\/bills\/:id",status="200"\} \d+/);
+  assert.match(text, /rachapay_db_pool_connections\{state="total"\}/);
+  assert.equal(text.includes(b.id), false, 'id da conta não vaza nas métricas');
+  assert.equal(text.includes('rpo_'), false);
 });
 
 test('D11: criação anônima é limitada por cliente (429 + Retry-After)', async () => {

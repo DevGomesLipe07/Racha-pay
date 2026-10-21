@@ -8,6 +8,7 @@ import type { Logger } from '../infra/log.ts';
 import { applyEvent } from '../modules/payments/service.ts';
 import { deliverWebhooks, type DeliveryDeps } from '../modules/integrations/webhooks/delivery.ts';
 import { runRetention } from '../modules/privacy/retention.ts';
+import type { MetricsRegistry } from '../infra/metrics.ts';
 
 export async function expireDuePayments(pool: Pool, clock: Clock, logger: Logger, limit = 200): Promise<{ expired: number; failed: number }> {
   const now = clock.now();
@@ -39,17 +40,27 @@ export async function expireDuePayments(pool: Pool, clock: Clock, logger: Logger
 
 const RETENTION_EVERY_MS = 60 * 60 * 1000;
 
-export function startWorker(deps: DeliveryDeps, intervalMs = 10_000): () => void {
+export function startWorker(deps: DeliveryDeps & { metrics?: MetricsRegistry }, intervalMs = 10_000): () => void {
   let running = false;
   let lastRetention = 0;
+  const count = (kind: string, result: string, n: number) => {
+    if (n > 0) deps.metrics?.workerEvents.inc({ kind, result }, n);
+  };
   const cycle = async () => {
     const expiry = await expireDuePayments(deps.pool, deps.clock, deps.logger);
+    count('payment_expiry', 'expired', expiry.expired);
+    count('payment_expiry', 'failed', expiry.failed);
     if (expiry.expired || expiry.failed) deps.logger.info('expiry_cycle', expiry);
     const hooks = await deliverWebhooks(deps);
+    count('webhook', 'delivered', hooks.delivered);
+    count('webhook', 'retrying', hooks.failed);
+    count('webhook', 'dead', hooks.dead);
     if (hooks.delivered || hooks.failed || hooks.dead) deps.logger.info('webhook_cycle', hooks);
     if (deps.clock.now().getTime() - lastRetention >= RETENTION_EVERY_MS) {
       lastRetention = deps.clock.now().getTime();
       const retention = await runRetention(deps.pool, deps.clock, deps.logger);
+      count('retention', 'anonymized', retention.anonymized);
+      count('retention', 'purged_keys', retention.purgedKeys);
       if (retention.anonymized || retention.purgedKeys) deps.logger.info('retention_cycle', retention);
     }
   };
@@ -57,7 +68,10 @@ export function startWorker(deps: DeliveryDeps, intervalMs = 10_000): () => void
     if (running) return;
     running = true;
     cycle()
-      .catch((e: unknown) => deps.logger.error('worker_cycle_failed', { message: (e as Error).message }))
+      .catch((e: unknown) => {
+        deps.metrics?.workerErrors.inc();
+        deps.logger.error('worker_cycle_failed', { message: (e as Error).message });
+      })
       .finally(() => {
         running = false;
       });

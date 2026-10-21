@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from 'node:crypto';
 import { AppError, toAppError } from '../../app/errors.ts';
 import type { Logger } from '../log.ts';
+import type { MetricsRegistry } from '../metrics.ts';
 import { clientKeyFromIp } from './rate-limit.ts';
 import type { HttpRequest, HttpResponse, Method, Router } from './router.ts';
 
@@ -19,6 +20,7 @@ export interface ServerOptions {
   trustProxy: boolean;
   /** Arquivos estáticos (PWA); chamado para GET fora de /v1, /health e /ready. */
   staticHandler?: (path: string, res: ServerResponse) => Promise<boolean>;
+  metrics?: MetricsRegistry;
 }
 
 export const SECURITY_HEADERS: Record<string, string> = {
@@ -62,6 +64,11 @@ function send(res: ServerResponse, response: HttpResponse, correlationId: string
     ...(https ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {}),
     ...response.headers,
   };
+  if (response.text !== undefined) {
+    res.writeHead(response.status, { ...headers, 'Content-Type': response.contentType ?? 'text/plain; charset=utf-8', 'Content-Length': String(Buffer.byteLength(response.text)) });
+    res.end(response.text);
+    return;
+  }
   if (response.body === undefined) {
     res.writeHead(response.status, headers);
     res.end();
@@ -151,6 +158,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
       res.destroy();
     }
   } finally {
-    opts.logger.info('request', { route, status, ms: Math.round(performance.now() - started), correlationId });
+    const elapsed = performance.now() - started;
+    opts.logger.info('request', { route, status, ms: Math.round(elapsed), correlationId });
+    opts.metrics?.httpRequests.inc({ route, status: String(status) });
+    opts.metrics?.httpDuration.observe({ route }, elapsed / 1000);
   }
 }

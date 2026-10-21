@@ -1,6 +1,8 @@
 // Montagem da aplicação: rotas + servidor HTTP + Web/PWA estática. Sem efeitos colaterais na importação.
 
 import type { Server } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
+import { unauthorized } from './errors.ts';
 import { fileURLToPath } from 'node:url';
 import { createHttpServer } from '../infra/http/server.ts';
 import { Router } from '../infra/http/router.ts';
@@ -38,6 +40,16 @@ export function buildRouter(deps: AppDeps): Router {
       return { status: 503, body: { status: 'unavailable' } };
     }
   });
+  // Prometheus: só com o token de administrador (métricas operacionais, sem dado de cliente).
+  router.get('/metrics', async (req) => {
+    const auth = req.headers.authorization ?? '';
+    const expected = `Bearer ${deps.config.ADMIN_TOKEN}`;
+    const a = Buffer.from(auth);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) throw unauthorized();
+    return { status: 200, text: deps.metrics.render(), contentType: 'text/plain; version=0.0.4; charset=utf-8' };
+  });
+
   router.get('/v1/config', async () => ({
     status: 200,
     body: { currency: 'BRL', sandboxEnabled: deps.config.SANDBOX_ENABLED, aiEnabled: deps.config.AI_PROVIDER !== 'none' },
@@ -54,11 +66,17 @@ export function buildRouter(deps: AppDeps): Router {
 
 export function buildServer(deps: AppDeps): Server {
   const https = deps.config.PUBLIC_BASE_URL.startsWith('https://');
+  deps.metrics.gauge('rachapay_db_pool_connections', 'Conexões do pool do banco por estado', () => ({
+    total: deps.pool.totalCount,
+    idle: deps.pool.idleCount,
+    waiting: deps.pool.waitingCount,
+  }));
   return createHttpServer({
     router: buildRouter(deps),
     logger: deps.logger,
     https,
     trustProxy: deps.config.TRUST_PROXY,
     staticHandler: createStaticHandler(PUBLIC_DIR, { https }),
+    metrics: deps.metrics,
   });
 }

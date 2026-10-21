@@ -19,6 +19,9 @@ export interface HttpRequest {
 export interface HttpResponse {
   status: number;
   body?: unknown;
+  /** Resposta em texto (ex.: /metrics); tem precedência sobre `body`. */
+  text?: string;
+  contentType?: string;
   headers?: Record<string, string>;
 }
 

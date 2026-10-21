@@ -12,6 +12,7 @@ import { startWorker } from './app/worker.ts';
 import { createProviderRegistry } from './modules/payments/providers.ts';
 import { parseEncryptionKey } from './infra/crypto/aead.ts';
 import { policyFor } from './modules/integrations/webhooks/ssrf.ts';
+import { MetricsRegistry } from './infra/metrics.ts';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -40,7 +41,8 @@ async function main(): Promise<void> {
 
   const providers = createProviderRegistry({ sandboxEnabled: config.SANDBOX_ENABLED, sandboxSecret: config.SANDBOX_WEBHOOK_SECRET });
   const ai = createAIProvider(config);
-  const server = buildServer({ pool, config, clock: systemClock, logger, rateLimiter: new RateLimiter(), providers, ai });
+  const metrics = new MetricsRegistry();
+  const server = buildServer({ pool, config, clock: systemClock, logger, rateLimiter: new RateLimiter(), providers, ai, metrics });
   server.listen(config.PORT, () => logger.info('listening', { port: config.PORT, env: config.NODE_ENV, sandbox: config.SANDBOX_ENABLED }));
   const stopWorker = startWorker({
     pool,
@@ -48,6 +50,7 @@ async function main(): Promise<void> {
     logger,
     key: parseEncryptionKey(config.APP_ENCRYPTION_KEY),
     policy: policyFor(config.NODE_ENV),
+    metrics,
   });
 
   const shutdown = (signal: string) => {
