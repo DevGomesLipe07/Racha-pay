@@ -1,6 +1,6 @@
 # 02 — Regras de negócio
 
-> **Estado em 21/10/2026:** regras normativas — governam o comportamento do código; o que já está implementado e provado fica em `04_RACHAPAY_IMPLEMENTATION_LOG.md`. As lacunas encontradas na análise foram decididas pelo proprietário em 21/10/2026 e estão na seção **Decisões D1–D17** no fim; quando uma decisão completa ou muda uma regra acima, a regra cita a decisão.
+> **Estado em 21/10/2026:** regras normativas — governam o comportamento do código; o que já está implementado e provado fica em `04_RACHAPAY_IMPLEMENTATION_LOG.md`. As lacunas encontradas na análise foram decididas pelo proprietário em 21/10/2026 e estão na seção **Decisões D1–D20** no fim; quando uma decisão completa ou muda uma regra acima, a regra cita a decisão.
 
 As regras parametrizáveis vivem na **Expert Library** (`knowledge`), semeadas por `migrations/0003_seed_knowledge.sql`. Mudança de regra = nova versão via API (DRAFT → REVIEW → APPROVED → ACTIVE), nunca edição de código ou SQL.
 
@@ -65,7 +65,7 @@ Exceções viram casos (`OVERPAYMENT, LATE_CONFIRMATION, OUT_OF_ORDER_EVENT, CHA
 
 Rachas completamente quitados por mês (`GET /v1/metrics`), com taxa de conclusão, participantes médios, mediana até quitação, TPV e exceções.
 
-## Decisões D1–D17 (proprietário, 21/10/2026)
+## Decisões D1–D20 (proprietário, 21/10/2026)
 
 Lacunas encontradas na análise de 20/10/2026, decididas e agora normativas.
 
@@ -100,4 +100,7 @@ Lacunas encontradas na análise de 20/10/2026, decididas e agora normativas.
 - **D14 — Dinheiro na fronteira.** Banco `bigint`; domínio `BigInt`; API em centavos como inteiro JSON, validado entre 0 e 100.000.000.000 (R$ 1 bilhão, abaixo de 2^53). Nunca float.
 - **D15 — Tempo.** Relógio injetável no domínio e nos serviços (expiração testável); métricas mensais em `America/Sao_Paulo`.
 - **D16 — Dois papéis no banco** (21/10/2026). `rachapay_owner` é dono do schema e só roda migrations (`MIGRATION_DATABASE_URL`); `rachapay_app` é o da aplicação (`DATABASE_URL`) e só recebe DML — no histórico financeiro, só `INSERT`/`SELECT`. Os dois sem superuser e sem BYPASSRLS. Assim a aplicação não consegue desligar RLS nem remover as triggers do ledger. Em produção o servidor recusa subir se o papel da aplicação for superuser, BYPASSRLS ou dono das tabelas.
+- **D18 — IA pelo SDK oficial, só no adapter** (21/10/2026). A leitura de cupom por foto usa o SDK `@anthropic-ai/sdk` (0.133.0, fixado) **apenas** em `src/modules/ai/anthropic-provider.ts`, atrás da interface `AIProvider`; o domínio nunca o importa. Substitui o "adapter HTTP puro" do plano anterior, que só existia por falta de npm. Modelo padrão `claude-sonnet-5-5` (configurável por `AI_MODEL`), saída estruturada validada por schema, fallback de recusa no servidor (`fallbacks: "default"`). Padrão do sistema: IA desligada (`AI_PROVIDER=none`).
+- **D19 — Volume da North Star separado por natureza** (21/10/2026). `GET /v1/metrics` reporta `declaredManualCents` (Pix/dinheiro ao organizador — o RachaPay não viu o dinheiro), `sandboxTestCents` (teste) e `providerCents` (PSP real). Nunca somados num "TPV" único.
+- **D20 — Novo link de convidado** (21/10/2026). O token só existe em hash, então não é recuperável; o organizador pode emitir um novo (`POST /v1/bills/{id}/share-links`), e o anterior continua válido.
 - **D17 — Retentativa de webhook de saída** (21/10/2026). 12 tentativas, 10 s dobrando, intervalo máximo 6 h: janela total ≈ 5,7 h, depois `DEAD` (reprocessável). Regra `WEBHOOK.RETRY` na Expert Library. Resolve a conta impossível "8 tentativas … até 6 h".
