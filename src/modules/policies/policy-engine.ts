@@ -23,7 +23,7 @@ export const ACTIONS = {
   'split.confirm': { scope: 'bills:write', financialCritical: true, humanOnly: false },
   'split.unlock': { scope: 'bills:write', financialCritical: true, humanOnly: false },
   'split.complement': { scope: 'bills:write', financialCritical: true, humanOnly: false },
-  'payment.create': { scope: 'payments:write', financialCritical: true, humanOnly: false },
+  'payment.create': { scope: 'payments:create', financialCritical: true, humanOnly: false },
   'payment.confirm_manual': { scope: 'payments:write', financialCritical: true, humanOnly: true },
   'payment.reject_manual': { scope: 'payments:write', financialCritical: true, humanOnly: true },
   'payment.apply_provider_event': { scope: 'payments:provider', financialCritical: true, humanOnly: false },

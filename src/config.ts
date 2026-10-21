@@ -18,6 +18,8 @@ const schema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   PUBLIC_BASE_URL: z.url().default('http://localhost:3000'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatório'),
+  /** Papel dono (rachapay_owner) — só para migrations (D16). Sem ela, o servidor não migra na subida. */
+  MIGRATION_DATABASE_URL: z.string().min(1).optional(),
   APP_ENCRYPTION_KEY: z
     .string()
     .refine((v) => Buffer.from(v, 'base64').length === 32, 'APP_ENCRYPTION_KEY deve ter 32 bytes em base64'),

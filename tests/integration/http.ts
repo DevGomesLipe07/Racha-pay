@@ -1,0 +1,67 @@
+import type { AddressInfo } from 'node:net';
+import { buildServer } from '../../src/app/app.ts';
+import { DEV_SECRETS, loadConfig } from '../../src/config.ts';
+import { manualClock } from '../../src/infra/clock.ts';
+import { newToken } from '../../src/infra/crypto/hash.ts';
+import { RateLimiter } from '../../src/infra/http/rate-limit.ts';
+import { silentLogger } from '../../src/infra/log.ts';
+import { TEST_DATABASE_URL, type TestDb } from './helpers.ts';
+
+export interface TestApp {
+  base: string;
+  clock: ReturnType<typeof manualClock>;
+  close(): Promise<void>;
+}
+
+export async function startApp(db: TestDb, env: Record<string, string> = {}): Promise<TestApp> {
+  const config = loadConfig({ DATABASE_URL: TEST_DATABASE_URL, ...DEV_SECRETS, NODE_ENV: 'test', ...env });
+  const clock = manualClock('2026-10-21T12:00:00.000Z');
+  const server = buildServer({ pool: db.app, config, clock, logger: silentLogger, rateLimiter: new RateLimiter(() => clock.now().getTime()) });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    base: `http://127.0.0.1:${port}`,
+    clock,
+    close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
+  };
+}
+
+export interface ApiResponse<T = any> {
+  status: number;
+  body: T;
+  headers: Headers;
+}
+
+export type Credential = { organizer: string } | { share: string } | { key: string; actor?: string } | { admin: string; actor: string } | undefined;
+
+export async function api<T = any>(app: TestApp, method: string, path: string, opts: { body?: unknown; as?: Credential; headers?: Record<string, string> } = {}): Promise<ApiResponse<T>> {
+  const headers: Record<string, string> = { ...opts.headers };
+  const as = opts.as;
+  if (as && 'organizer' in as) headers.authorization = `Bearer ${as.organizer}`;
+  if (as && 'share' in as) headers['x-share-token'] = as.share;
+  if (as && 'key' in as) {
+    headers.authorization = `Bearer ${as.key}`;
+    if (as.actor) headers['x-actor-id'] = as.actor;
+  }
+  if (as && 'admin' in as) {
+    headers.authorization = `Bearer ${as.admin}`;
+    headers['x-actor-id'] = as.actor;
+  }
+  if (opts.body !== undefined) headers['content-type'] = 'application/json';
+  const res = await fetch(`${app.base}${path}`, { method, headers, ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}) });
+  const text = await res.text();
+  return { status: res.status, body: text ? JSON.parse(text) : undefined, headers: res.headers };
+}
+
+/** Cria chave de API (como dono — é o que o script tenant:create faz). */
+export async function createApiKey(db: TestDb, tenantId: string, scopes: string[], actorType: 'HUMAN' | 'SYSTEM' | 'AI' = 'SYSTEM'): Promise<string> {
+  const { token, hash } = newToken('apiKey');
+  await db.owner.query('INSERT INTO api_keys (tenant_id, key_hash, name, scopes, actor_type) VALUES ($1, $2, $3, $4, $5)', [
+    tenantId,
+    hash,
+    'teste',
+    scopes,
+    actorType,
+  ]);
+  return token;
+}
