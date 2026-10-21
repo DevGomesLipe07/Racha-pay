@@ -37,6 +37,30 @@ export const CONTENT_SCHEMAS = {
 } as const;
 
 export type KnowledgeKey = keyof typeof CONTENT_SCHEMAS;
+
+/** Proposta aprendida pelo CBR: como tratar um tipo de exceção (não é usada por nenhuma regra automática). */
+export const PLAYBOOK_SCHEMA = z
+  .object({
+    caseKind: z.string().regex(/^[A-Z_]+$/),
+    decision: z.string().min(1).max(120),
+    supportingCaseIds: z.array(z.uuid()).min(3).max(100),
+    supportingCases: z.number().int().min(3),
+  })
+  .strict();
+
+/** Chaves cujo erro mexe em dinheiro: exigem quatro olhos (aprovador ≠ autor). */
+export const CRITICAL_KEYS = new Set<string>(['SERVICE_CHARGE.DEFAULT', 'DISCOUNT.ALLOCATION', 'TIP.ALLOCATION', 'ROUNDING.ALLOCATION', 'PAYMENT.EXPIRY']);
+
+export function isCriticalKey(key: string): boolean {
+  return CRITICAL_KEYS.has(key) || key.startsWith('CBR_PLAYBOOK.');
+}
+
+/** Schema de qualquer chave governável; desconhecida = recusada (conteúdo sempre validado antes de aprovar). */
+export function schemaFor(key: string): z.ZodType | undefined {
+  if (key in CONTENT_SCHEMAS) return CONTENT_SCHEMAS[key as KnowledgeKey];
+  if (/^CBR_PLAYBOOK\.[A-Z_]+$/.test(key)) return PLAYBOOK_SCHEMA;
+  return undefined;
+}
 export type KnowledgeContent<K extends KnowledgeKey> = z.infer<(typeof CONTENT_SCHEMAS)[K]>;
 
 export interface ResolutionContext {

@@ -7,7 +7,12 @@ export type DbScope =
   /** Credencial de tenant (chave de API / admin do tenant): todas as contas do tenant. */
   | { kind: 'tenant'; tenantId: string }
   /** Token de capacidade (organizador/convidado): só aquela conta. */
-  | { kind: 'bill'; tenantId: string; billId: string };
+  | { kind: 'bill'; tenantId: string; billId: string }
+  /** Administrador da plataforma (ADMIN_TOKEN já validado): só conhecimento compartilhado; nenhum dado de tenant. */
+  | { kind: 'platform' };
+
+/** Escopo com tenant (credencial de tenant ou token de conta). */
+export type TenantDbScope = Exclude<DbScope, { kind: 'platform' }>;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,15 +24,15 @@ export class DbScopeError extends Error {
 }
 
 export async function withScope<T>(pool: Pool, scope: DbScope, fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  if (!UUID.test(scope.tenantId)) throw new DbScopeError('tenantId inválido');
+  if (scope.kind !== 'platform' && !UUID.test(scope.tenantId)) throw new DbScopeError('tenantId inválido');
   if (scope.kind === 'bill' && !UUID.test(scope.billId)) throw new DbScopeError('billId inválido');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query("SELECT set_config('app.tenant_id', $1, true), set_config('app.bill_id', $2, true)", [
-      scope.tenantId,
-      scope.kind === 'bill' ? scope.billId : '',
-    ]);
+    await client.query(
+      "SELECT set_config('app.tenant_id', $1, true), set_config('app.bill_id', $2, true), set_config('app.platform_admin', $3, true)",
+      [scope.kind === 'platform' ? '' : scope.tenantId, scope.kind === 'bill' ? scope.billId : '', scope.kind === 'platform' ? 'on' : ''],
+    );
     const result = await fn(client);
     await client.query('COMMIT');
     return result;

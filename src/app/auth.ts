@@ -5,7 +5,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { hashToken, tokenKind } from '../infra/crypto/hash.ts';
 import type { Pool } from '../infra/db/pool.ts';
-import { withoutScope, type DbScope } from '../infra/db/tx.ts';
+import { withoutScope, type TenantDbScope } from '../infra/db/tx.ts';
 import type { ActorType } from '../modules/ledger/chain.ts';
 import type { PolicyActor } from '../modules/policies/policy-engine.ts';
 import { badRequest, notFound, unauthorized } from './errors.ts';
@@ -108,7 +108,7 @@ export function policyActor(p: Principal): PolicyActor {
 }
 
 /** Escopo de banco para acessar uma conta. Token de capacidade só acessa a própria conta (404 para as outras). */
-export function billScope(p: Principal, billId: string): DbScope {
+export function billScope(p: Principal, billId: string): TenantDbScope {
   switch (p.kind) {
     case 'organizer':
     case 'guest':

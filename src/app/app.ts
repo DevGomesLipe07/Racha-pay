@@ -10,6 +10,7 @@ import { registerBillRoutes } from './routes/bills.ts';
 import { registerPaymentRoutes } from './routes/payments.ts';
 import { registerWebhookRoutes } from './routes/webhooks.ts';
 import { registerErpRoutes } from './routes/erp.ts';
+import { registerIntelligenceRoutes } from './routes/intelligence.ts';
 
 export const PUBLIC_DIR = fileURLToPath(new URL('../../public/', import.meta.url));
 
@@ -34,6 +35,7 @@ export function buildRouter(deps: AppDeps): Router {
   registerPaymentRoutes(router, deps);
   registerWebhookRoutes(router, deps);
   registerErpRoutes(router, deps);
+  registerIntelligenceRoutes(router, deps);
   return router;
 }
 
