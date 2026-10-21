@@ -8,6 +8,8 @@ import { createPool } from './infra/db/pool.ts';
 import { inspectRole, roleProblems } from './infra/db/role-check.ts';
 import { RateLimiter } from './infra/http/rate-limit.ts';
 import { createLogger } from './infra/log.ts';
+import { startWorker } from './app/worker.ts';
+import { createProviderRegistry } from './modules/payments/providers.ts';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -34,11 +36,14 @@ async function main(): Promise<void> {
     logger.warn('database_role_unsafe', { problems: problems.join('; ') });
   }
 
-  const server = buildServer({ pool, config, clock: systemClock, logger, rateLimiter: new RateLimiter() });
-  server.listen(config.PORT, () => logger.info('listening', { port: config.PORT, env: config.NODE_ENV }));
+  const providers = createProviderRegistry({ sandboxEnabled: config.SANDBOX_ENABLED, sandboxSecret: config.SANDBOX_WEBHOOK_SECRET });
+  const server = buildServer({ pool, config, clock: systemClock, logger, rateLimiter: new RateLimiter(), providers });
+  server.listen(config.PORT, () => logger.info('listening', { port: config.PORT, env: config.NODE_ENV, sandbox: config.SANDBOX_ENABLED }));
+  const stopWorker = startWorker({ pool, clock: systemClock, logger });
 
   const shutdown = (signal: string) => {
     logger.info('shutdown', { signal });
+    stopWorker();
     server.close(() => void pool.end().then(() => process.exit(0)));
     setTimeout(() => process.exit(1), 10_000).unref();
   };

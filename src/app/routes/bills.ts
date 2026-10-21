@@ -2,24 +2,22 @@
 
 import { z } from 'zod';
 import { withScope } from '../../infra/db/tx.ts';
-import type { PoolClient } from '../../infra/db/pool.ts';
-import type { HttpRequest, HttpResponse, Router } from '../../infra/http/router.ts';
+import type { Router } from '../../infra/http/router.ts';
 import { reconstructFromLedger, verifyChain } from '../../modules/ledger/chain.ts';
 import { readLedger } from '../../modules/ledger/ledger-repo.ts';
-import type { PolicyAction } from '../../modules/policies/policy-engine.ts';
 import { loadReconciliation } from '../../modules/reconciliation/service.ts';
 import { BILL_KINDS, COLLECTION_MODELS, loadBill } from '../../modules/shared-bills/repo.ts';
 import * as bills from '../../modules/shared-bills/service.ts';
 import { billView } from '../../modules/shared-bills/view.ts';
-import type { ServiceContext } from '../../modules/service-context.ts';
 import { SPLIT_MODES } from '../../modules/split/engine.ts';
 import { centsToJson } from '../../modules/split/money.ts';
 import { resolveKnowledge } from '../../modules/expert/library.ts';
-import { billScope, PERSONAL_TENANT_ID, policyActor, resolvePrincipal, viewerOf, type Principal } from '../auth.ts';
+import { PERSONAL_TENANT_ID } from '../auth.ts';
 import { AppError, conflict, forbidden, notFound } from '../errors.ts';
 import { auditAllowed, preAuthorize } from '../guard.ts';
 import { cents, param, parseBody, uuid } from '../http-helpers.ts';
 import type { AppDeps } from '../deps.ts';
+import { routeKit } from './common.ts';
 
 const name60 = z.string().trim().min(1).max(60);
 
@@ -65,34 +63,7 @@ const itemSchema = z
 
 export function registerBillRoutes(router: Router, deps: AppDeps): void {
   const { pool, config, clock, rateLimiter } = deps;
-
-  const principalOf = (req: HttpRequest) => resolvePrincipal(pool, req.headers, config.ADMIN_TOKEN);
-
-  const ctxOf = (principal: Principal, tenantId: string, req: HttpRequest): ServiceContext => {
-    const actor = policyActor(principal);
-    return { tenantId, actor: { type: actor.type, id: actor.id }, correlationId: req.correlationId, now: clock.now() };
-  };
-
-  /** Executa uma ação sobre uma conta existente: autoriza, abre o escopo, audita e devolve a conta. */
-  const onBill = (
-    action: PolicyAction,
-    fn: (client: PoolClient, ctx: ServiceContext, req: HttpRequest, billId: string, principal: Principal) => Promise<unknown>,
-    opts: { status?: number; respond?: 'bill' | 'result' } = {},
-  ) =>
-    async (req: HttpRequest): Promise<HttpResponse> => {
-      const billId = param(req, 'id');
-      const principal = await principalOf(req);
-      const scope = billScope(principal, billId);
-      const decision = await preAuthorize(pool, principal, action, { tenantId: scope.tenantId, billId }, req.correlationId);
-      const body = await withScope(pool, scope, async (client) => {
-        const ctx = ctxOf(principal, scope.tenantId, req);
-        await auditAllowed(client, principal, decision, { tenantId: scope.tenantId, billId }, req.correlationId);
-        const result = await fn(client, ctx, req, billId, principal);
-        if (opts.respond === 'result') return result;
-        return { bill: await billView(client, billId, { viewer: viewerOf(principal) }), ...(result && typeof result === 'object' ? result : {}) };
-      });
-      return { status: opts.status ?? 200, body };
-    };
+  const { principalOf, ctxOf, onBill } = routeKit(deps);
 
   const links = (billId: string, shareToken: string, organizerToken?: string) => ({
     share: `${config.PUBLIC_BASE_URL}/#/s/${billId}/${shareToken}`,

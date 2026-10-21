@@ -5,6 +5,7 @@ import { createHttpServer } from '../infra/http/server.ts';
 import { Router } from '../infra/http/router.ts';
 import type { AppDeps } from './deps.ts';
 import { registerBillRoutes } from './routes/bills.ts';
+import { registerPaymentRoutes } from './routes/payments.ts';
 
 export function buildRouter(deps: AppDeps): Router {
   const router = new Router();
@@ -24,6 +25,7 @@ export function buildRouter(deps: AppDeps): Router {
   }));
 
   registerBillRoutes(router, deps);
+  registerPaymentRoutes(router, deps);
   return router;
 }
 

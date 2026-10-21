@@ -5,23 +5,30 @@ import { manualClock } from '../../src/infra/clock.ts';
 import { newToken } from '../../src/infra/crypto/hash.ts';
 import { RateLimiter } from '../../src/infra/http/rate-limit.ts';
 import { silentLogger } from '../../src/infra/log.ts';
+import { createProviderRegistry, SandboxProvider } from '../../src/modules/payments/providers.ts';
+import { expireDuePayments } from '../../src/app/worker.ts';
 import { TEST_DATABASE_URL, type TestDb } from './helpers.ts';
 
 export interface TestApp {
   base: string;
   clock: ReturnType<typeof manualClock>;
+  sandbox: SandboxProvider;
+  runExpiry(): Promise<{ expired: number; failed: number }>;
   close(): Promise<void>;
 }
 
 export async function startApp(db: TestDb, env: Record<string, string> = {}): Promise<TestApp> {
   const config = loadConfig({ DATABASE_URL: TEST_DATABASE_URL, ...DEV_SECRETS, NODE_ENV: 'test', ...env });
   const clock = manualClock('2026-10-21T12:00:00.000Z');
-  const server = buildServer({ pool: db.app, config, clock, logger: silentLogger, rateLimiter: new RateLimiter(() => clock.now().getTime()) });
+  const providers = createProviderRegistry({ sandboxEnabled: config.SANDBOX_ENABLED, sandboxSecret: config.SANDBOX_WEBHOOK_SECRET });
+  const server = buildServer({ pool: db.app, config, clock, logger: silentLogger, rateLimiter: new RateLimiter(() => clock.now().getTime()), providers });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
   return {
     base: `http://127.0.0.1:${port}`,
     clock,
+    sandbox: providers.sandbox ?? new SandboxProvider(config.SANDBOX_WEBHOOK_SECRET),
+    runExpiry: () => expireDuePayments(db.app, clock, silentLogger),
     close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
   };
 }
