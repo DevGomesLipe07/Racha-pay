@@ -2,29 +2,29 @@
 
 Resumo dos princípios do Guia Mestre e da Constituição de Inteligência, com o lugar onde cada um será garantido no código.
 
-> **Estado em 20/10/2026:** os princípios abaixo são vigentes e inegociáveis. O código que os garante **ainda não existe**. A coluna "Onde será garantido" é o alvo; vira "garantido" — com o caminho real e o teste — à medida que cada parte for implementada e provada (ver `04_RACHAPAY_IMPLEMENTATION_LOG.md`).
+> **Estado em 21/10/2026:** os princípios abaixo são vigentes e inegociáveis. Onde a tabela diz **garantido**, existe código e teste executado (ver `04_RACHAPAY_IMPLEMENTATION_LOG.md`); onde diz **alvo**, ainda é especificação.
 >
 > Referências a "Guia Mestre §…" e "Constituição de Inteligência" apontam para documentos de visão que não estão neste repositório.
 
 ## A IA apoia. Ela não sustenta.
 
-| Princípio | Onde será garantido |
+| Princípio | Onde |
 |---|---|
-| Fonte da verdade = PostgreSQL + ledger + regras + políticas + conhecimento aprovado | `modules/split/engine.ts`, `modules/reconciliation/reconcile.ts`, `modules/ledger/ledger.ts` — nenhum importa IA |
-| Sistema funciona sem nenhum LLM | `NullAIProvider` como padrão; teste `IA: sem provedor…` quita um racha com IA desligada |
-| IA nunca executa ação financeira crítica | `policies/policy-engine.ts` (`FINANCIAL_CRITICAL`); teste unitário percorre todas as ações com ator `AI` e escopo `*` |
-| LLM substituível, sem SDK no domínio | `modules/ai/provider.ts` (interface `AIProvider`, adapter HTTP puro) |
-| Saída de IA é sugestão confirmada por humano | `modules/ai/skills.ts` (`requiresConfirmation: true`; nada é gravado na conta) |
+| Fonte da verdade = PostgreSQL + ledger + regras + políticas + conhecimento aprovado | **garantido**: `src/modules/split/engine.ts`, `src/modules/reconciliation/reconcile.ts`, `src/modules/ledger/chain.ts` — nenhum importa IA |
+| IA nunca executa ação financeira crítica | **garantido**: `src/modules/policies/policy-engine.ts`; teste unitário percorre todas as ações críticas com ator `AI` e escopo `*`; teste de integração: chave `AI` não confirma divisão (403) |
+| Sistema funciona sem nenhum LLM | **garantido** hoje (não há LLM no código); alvo: `NullAIProvider` como padrão quando a camada de IA entrar |
+| LLM substituível, sem SDK no domínio | alvo: `modules/ai/provider.ts` (interface `AIProvider`, adapter HTTP puro) |
+| Saída de IA é sugestão confirmada por humano | alvo: `modules/ai/skills.ts` (`requiresConfirmation: true`; nada é gravado na conta) |
 
 ## Ordem de maturidade da inteligência
 
-| Camada | Estado | Alvo / observação |
+| Camada | Estado | Observação |
 |---|---|---|
-| Dados e evidências | PENDENTE | ledger encadeado, `provider_events`, `audit_log` |
-| Regras determinísticas | PENDENTE | Racha Engine, conciliação |
-| Policy Engine | PENDENTE | `POLICY_V1`, decisões negadas e críticas auditadas |
-| Expert Library / CEKE | PENDENTE | versões, escopos, vigência, quatro olhos, schema de conteúdo |
-| CBR + ledger | PENDENTE | casos automáticos, similaridade (Jaccard), propostas LEARNED |
+| Dados e evidências | IMPLEMENTADO | ledger encadeado e imutável no banco, `provider_events`, `audit_log` |
+| Regras determinísticas | IMPLEMENTADO | Racha Engine, conciliação, estados D6 |
+| Policy Engine | IMPLEMENTADO | `POLICY_V1`; negadas e críticas auditadas |
+| Expert Library / CEKE | PARCIAL | 9 regras fundadoras, escopos, vigência, schema de conteúdo, imutabilidade no banco; API de governança (propor/aprovar com quatro olhos) PENDENTE |
+| CBR + ledger | PARCIAL | casos automáticos de todas as exceções de pagamento; resolução de OVERPAYMENT pela devolução manual (D3); similaridade (Jaccard), API e propostas LEARNED PENDENTE |
 | Machine Learning | PENDENTE | sem dados — não será criado por criar |
 | RAG / RAG Enterprise | PENDENTE | sem corpus que justifique; filtro por tenant virá do RLS |
 | MCP | PENDENTE | entra quando houver ferramentas estáveis expostas a agentes |
@@ -37,7 +37,7 @@ Resumo dos princípios do Guia Mestre e da Constituição de Inteligência, com 
 
 - Sempre centavos inteiros (`bigint` no banco). Multiplicações internas em `BigInt`.
 - Arredondamento: maiores restos com desempate pela posição do participante (`ROUNDING.ALLOCATION`).
-- Invariantes verificadas em código antes de persistir e cobertas por testes de propriedade (meta: 3.500 cenários aleatórios por execução).
+- Invariantes verificadas em código antes de persistir e cobertas por testes de propriedade (3.500 cenários aleatórios por execução, semente fixa).
 
 ## Segurança
 

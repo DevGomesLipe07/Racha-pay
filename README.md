@@ -6,97 +6,82 @@ Plataforma de divisão, cobrança, pagamento e conciliação de despesas compart
 
 Monólito modular em TypeScript sobre Node.js 22, PostgreSQL como fonte da verdade, multi-tenant com RLS, API-first, ledger encadeado por hash, Expert Library versionada, memória de casos (CBR) e IA como apoio substituível — nunca como autoridade financeira.
 
-> **Estado em 20/10/2026: especificação, sem código.** Este repositório contém os documentos canônicos do RachaPay. O código do Ciclo 1 ainda não foi implementado — as seções abaixo descrevem o **alvo**. O que estiver de fato construído e testado fica registrado em `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md`.
+> **Estado em 21/10/2026:** o **núcleo financeiro está implementado e testado** (98 testes: 70 unitários, 28 de integração contra PostgreSQL real). Uma conta vai de "criada" a "quitada" pela API, com ledger verificável. Ainda faltam a interface Web/PWA, webhooks de saída, ERP e a camada de IA — detalhes em `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md`.
 
 ---
 
-## Começar em 5 minutos (quando o Ciclo 1 for entregue)
-
-Os comandos abaixo ainda não funcionam: `docker-compose.yml`, `package.json`, `scripts/` e `.env.example` ainda não existem.
-
-### Opção A — Docker (recomendado para conhecer)
-
-```bash
-docker compose up --build
-# abra http://localhost:3000
-```
-
-### Opção B — Node local
+## Começar
 
 Requisitos: **Node.js ≥ 22.18** (executa TypeScript nativamente, sem build) e **PostgreSQL ≥ 16**.
 
 ```bash
-# 1. banco: papel SEM superuser (obrigatório para o RLS valer) + bancos
+# 1. banco (uma vez, como administrador): dois papéis SEM superuser + bancos
 psql -U postgres -f scripts/db-init.sql
 
 # 2. ambiente
 cp .env.example .env
-#    preencha: DATABASE_URL, APP_ENCRYPTION_KEY (openssl rand -base64 32), SANDBOX_WEBHOOK_SECRET, ADMIN_TOKEN
+#    acrescente MIGRATION_DATABASE_URL=postgresql://rachapay_owner:rachapay_owner_dev@localhost:5432/rachapay
 
-# 3. dependências, migrations e testes
+# 3. dependências e testes
 npm install
-npm run migrate
-npm run check            # typecheck + unitários + integração (usa TEST_DATABASE_URL)
+npm run check            # typecheck + unitários + integração
 
-# 4. subir
-npm start                # http://localhost:3000
+# 4. subir (aplica as migrations na subida quando MIGRATION_DATABASE_URL existe)
+node --env-file=.env src/main.ts      # http://localhost:3000/health
 ```
 
-Variável dos testes: `TEST_DATABASE_URL` (padrão: `postgresql://rachapay_app:rachapay_dev@localhost:5432/rachapay_test`). Os testes de integração **apagam e recriam o schema** desse banco — nunca aponte para produção.
+Com Docker: `docker compose up --build` (escrito, ainda não executado — ver log).
 
-E2E de interface (Chromium): `npx playwright install chromium && npm run test:e2e`.
+**Papéis do banco (D16):** `DATABASE_URL` usa `rachapay_app` (só DML); `MIGRATION_DATABASE_URL` usa `rachapay_owner` (dono do schema, só migrations). Em produção o servidor recusa subir se o papel da aplicação for superuser, BYPASSRLS ou dono das tabelas.
+
+**Testes de integração:** `TEST_DATABASE_URL` (padrão `postgresql://rachapay_app:rachapay_dev@localhost:5432/rachapay_test`) e `TEST_MIGRATION_DATABASE_URL` (padrão com `rachapay_owner`). Eles **apagam e recriam o schema** — nunca aponte para produção.
+
+**Windows sem Docker:** os binários oficiais do PostgreSQL 16 em zip (EnterpriseDB) rodam sem instalador: `initdb`, `pg_ctl start`, e depois o passo 1.
+
+Primeiro cliente Business: `MIGRATION_DATABASE_URL=… npm run tenant:create -- --name "Restaurante X"` (a chave aparece uma vez).
 
 ---
 
-## O que o Ciclo 1 deve entregar
+## O que funciona hoje
 
-| Fluxo | Como |
+| Fluxo | Estado |
 |---|---|
-| Criar racha sem conta e sem app | Web/PWA, `POST /v1/bills` |
-| Itens, participantes, item compartilhado, pesos | organizador (link privado) |
-| Divisão igual, por item, percentual, valores manuais | Racha Engine determinístico, centavos inteiros |
-| Serviço, gorjeta, desconto, arredondamento | regras vindas da Expert Library, com proveniência no ledger |
-| Link + QR + WhatsApp para convidados | token no fragmento `#` da URL |
-| Convidado vê a própria parte e paga | Pix/dinheiro ao organizador (confirmação dele) ou sandbox de teste |
-| Conciliação e quitação | invariante verificada a cada evento; SETTLED só por regra determinística |
-| Estorno, chargeback, reabertura, pagamento a maior | eventos compensatórios, casos CBR |
-| Restaurante integrado (ERP) | contrato canônico `POST /v1/integrations/erp/generic/sync` + webhooks assinados |
-| Leitura de cupom | texto: parser determinístico; foto: IA opcional (Anthropic), sempre como sugestão |
+| Criar racha sem conta (`POST /v1/bills`), links com token no `#` | ✅ API |
+| Itens, participantes, item compartilhado, pesos | ✅ API |
+| Divisão igual, por item, percentual, valores manuais (Racha Engine, centavos inteiros) | ✅ |
+| Serviço, gorjeta, desconto, arredondamento vindos da Expert Library, com proveniência | ✅ |
+| Prévia, confirmação, "mais uma rodada" (complemento), destravar, cancelar | ✅ |
+| Convidado paga: Pix/dinheiro ao organizador (ele confirma) ou sandbox de teste | ✅ API |
+| Conciliação e quitação determinísticas; parte do organizador já quitada | ✅ |
+| Estorno, chargeback, reabertura, pagamento a maior, devolução manual | ✅ |
+| Ledger encadeado e imutável, com reconstrução do estado | ✅ |
+| Interface Web/PWA, QR, WhatsApp | ⏳ |
+| Restaurante integrado (ERP canônico) e webhooks de saída | ⏳ |
+| Leitura de cupom e explicação por IA | ⏳ |
+| Pagamento real via PSP | ⛔ bloqueado: falta contrato e credenciais de um PSP |
+| Adapter nativo NexFlow | ⛔ bloqueado: decisão de encaixe de domínio |
 
-## Status honesto
-
-**Nada implementado ainda.** O acompanhamento real fica em `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md`. Além do Ciclo 1 em si, estes itens já se sabem **bloqueados** por dependência externa:
-
-- **Pagamento real (Pix/cartão via PSP): BLOQUEADO** — depende de contrato e credenciais de um PSP. O adapter será uma interface (`PaymentProvider`); o sandbox é só teste.
-- **Adapter nativo NexFlow: BLOQUEADO** — depende de decisão de encaixe de domínio (ver `docs/03`). O NexFlow poderá integrar enviando o contrato canônico.
-- **Leitura de cupom por foto**: só poderá ser validada contra a API real com `ANTHROPIC_API_KEY`.
-
-## Estrutura (alvo)
+## Estrutura
 
 ```
 src/
-  main.ts                 entrada (migrations, checagem de RLS, servidor, worker)
+  main.ts                 entrada (migrations, checagem do papel, servidor, worker)
   config.ts               configuração validada (produção recusa segredos de dev)
-  app/                    rotas HTTP, contexto, worker de jobs
-  infra/db/               acesso ao PostgreSQL (pacote `pg`), transações por tenant, migrations
-  infra/http/             servidor HTTP, segurança, rate limit, estáticos
-  infra/crypto/           hashes, HMAC, AES-GCM, JSON canônico
+  app/                    rotas HTTP, autenticação, Policy Engine + audit, idempotência, worker
+  infra/db/               pg, transações com escopo de tenant/conta, migrations, checagem de papel
+  infra/http/             servidor, roteador, headers de segurança, rate limit
+  infra/crypto/           SHA-256, HMAC, AES-GCM, JSON canônico
   modules/
     split/                Racha Engine (puro, sem I/O)
-    shared-bills/         agregado SharedBill (participantes, itens)
-    payments/             provedores, máquina de estados, idempotência
-    reconciliation/       conciliação determinística e quitação
+    shared-bills/         agregado SharedBill
+    payments/             máquina de estados, provedores, webhooks
+    reconciliation/       conciliação determinística e estados da conta
     ledger/               ledger append-only encadeado por hash
     expert/               Expert Library / CEKE
     policies/             Policy Engine
-    cbr/                  memória de casos e propostas de aprendizado
-    ai/                   AIProvider + skills
-    integrations/erp/     ERP Gateway (contrato canônico)
-    integrations/webhooks/ outbox transacional e entrega assinada
-    identity/ audit/ analytics/
 migrations/               SQL versionado (checksum protege contra edição)
-public/                   Web/PWA (sem build)
-tests/unit|integration|e2e
+scripts/                  db-init.sql, migrate, create-tenant
+tests/unit|integration
 docs/                     constituição, regras, integrações, log de implementação
 ```
 
@@ -104,8 +89,8 @@ docs/                     constituição, regras, integrações, log de implemen
 
 Leia nesta ordem — cada um é governado pelos anteriores:
 
-1. `docs/01_RACHAPAY_CONSTITUICAO.md` — princípios inegociáveis e onde serão garantidos no código
-2. `docs/02_RACHAPAY_REGRAS_NEGOCIO.md` — regras de divisão, conciliação, estados
+1. `docs/01_RACHAPAY_CONSTITUICAO.md` — princípios inegociáveis e onde são garantidos no código
+2. `docs/02_RACHAPAY_REGRAS_NEGOCIO.md` — regras de divisão, conciliação, estados e decisões D1–D17
 3. `docs/03_RACHAPAY_ROADMAP_INTEGRACOES.md` — API, contrato ERP canônico, webhooks, PSP, roadmap
 4. `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md` — o que foi feito, provado e o que falta
 

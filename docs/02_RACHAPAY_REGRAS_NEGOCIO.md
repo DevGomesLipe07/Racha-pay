@@ -1,6 +1,6 @@
 # 02 — Regras de negócio
 
-> **Estado em 21/10/2026:** regras normativas — governam o comportamento do código; o que já está implementado e provado fica em `04_RACHAPAY_IMPLEMENTATION_LOG.md`. As lacunas encontradas na análise foram decididas pelo proprietário em 21/10/2026 e estão na seção **Decisões D1–D15** no fim; quando uma decisão completa ou muda uma regra acima, a regra cita a decisão.
+> **Estado em 21/10/2026:** regras normativas — governam o comportamento do código; o que já está implementado e provado fica em `04_RACHAPAY_IMPLEMENTATION_LOG.md`. As lacunas encontradas na análise foram decididas pelo proprietário em 21/10/2026 e estão na seção **Decisões D1–D17** no fim; quando uma decisão completa ou muda uma regra acima, a regra cita a decisão.
 
 As regras parametrizáveis vivem na **Expert Library** (`knowledge`), semeadas por `migrations/0003_seed_knowledge.sql`. Mudança de regra = nova versão via API (DRAFT → REVIEW → APPROVED → ACTIVE), nunca edição de código ou SQL.
 
@@ -26,7 +26,8 @@ Modos: igual, por item, percentual (soma 100%) e valores manuais (soma = total).
 3. Serviço = `bp × base`, base após desconto (`SERVICE_CHARGE.DEFAULT`), meio-para-cima no centavo. Padrão: 0% global; **10% em restaurantes** (regra de segmento). Máximo 30%.
 4. Desconto e gorjeta proporcionais ao consumo (`DISCOUNT.ALLOCATION`, `TIP.ALLOCATION`).
 5. Centavos por **maiores restos**; empate decidido pela ordem dos participantes. Exemplos: R$ 100,00 / 3 = 33,34 + 33,33 + 33,33; R$ 10,01 / 3 = 3,34 + 3,34 + 3,33.
-6. Alocação cumulativa: o total de cada pessoa é a divisão justa do total da conta, e cada coluna (itens, desconto, serviço, gorjeta) fecha no centavo. Em casos raros um componente individual pode variar 1 centavo em relação ao proporcional exato; o total nunca.
+6. Alocação cumulativa: o total de cada pessoa é a divisão justa do total da conta, e cada coluna (itens, desconto, serviço, gorjeta) fecha no centavo. Nenhum componente fica negativo. Um componente individual pode se afastar do proporcional exato em menos de 2 centavos (máximo medido: 1,21 centavo em 3.500 cenários aleatórios); o total nunca.
+7. Por item, o consumo de cada pessoa é somado de forma exata (racional) e arredondado **uma vez** — arredondar item a item faria o primeiro participante ganhar 1 centavo em cada item.
 
 ## Pagamentos
 
@@ -64,14 +65,14 @@ Exceções viram casos (`OVERPAYMENT, LATE_CONFIRMATION, OUT_OF_ORDER_EVENT, CHA
 
 Rachas completamente quitados por mês (`GET /v1/metrics`), com taxa de conclusão, participantes médios, mediana até quitação, TPV e exceções.
 
-## Decisões D1–D15 (proprietário, 21/10/2026)
+## Decisões D1–D17 (proprietário, 21/10/2026)
 
 Lacunas encontradas na análise de 20/10/2026, decididas e agora normativas.
 
 **Dinheiro e estados**
 
 - **D1 — Quitação exige tudo atribuído.** A confirmação da divisão só é aceita com `NÃO ATRIBUÍDO = 0` (o engine garante por construção), e `SETTLED` exige esse termo zerado. Nunca há quitação com dinheiro sem dono.
-- **D2 — Complemento.** Com pagamentos ativos ou recebidos, acréscimos (nova rodada, item novo) geram a versão N+1 da divisão = versão N + divisão **só do acréscimo** (o engine roda sobre os itens novos, com a mesma regra de serviço; desconto e gorjeta já alocados não mudam). Nada já pago é redistribuído. Estado volta a `OPEN`/`PARTIALLY_PAID` conforme D6; se estava `SETTLED`, vira `REOPENED`. Ledger: `SPLIT_COMPLEMENTED`. Alterar ou remover item **já confirmado** continua proibido (via ERP: `409 ERP_DIVERGENCE` + caso CBR); só acréscimo vira complemento.
+- **D2 — Complemento.** Com pagamentos ativos ou recebidos, acréscimos (nova rodada, item novo) geram a versão N+1 da divisão = versão N + divisão **só do acréscimo** (o engine roda sobre os itens novos, com a mesma regra de serviço; desconto e gorjeta já alocados não mudam). Em conta no modo MANUAL, o acréscimo é dividido por item (itens sem marcação = todos). Nada já pago é redistribuído. Estado volta a `OPEN`/`PARTIALLY_PAID` conforme D6; se estava `SETTLED`, vira `REOPENED`. Ledger: `SPLIT_COMPLEMENTED`. Alterar ou remover item **já confirmado** continua proibido (via ERP: `409 ERP_DIVERGENCE` + caso CBR); só acréscimo vira complemento.
 - **D3 — Devolução manual.** Em pagamento manual, o organizador registra "devolvi" para o excedente de um participante: evento compensatório `REFUND_RECORDED` no ledger, `REFUND_DUE` zera e o caso `OVERPAYMENT` é resolvido. Valor ≤ excedente.
 - **D4 — Gorjeta proporcional ao consumo** mantida como padrão (`TIP.ALLOCATION`), alterável pela Expert Library.
 - **D5 — Modelo de cobrança.** `ORGANIZER_COLLECTS` (padrão do tenant Pessoal): o organizador é participante marcado como tal e já pagou o estabelecimento; na confirmação, a parte dele nasce quitada pelo evento `ORGANIZER_SHARE_SELF_SETTLED` (não é pagamento, não entra no TPV). `MERCHANT_COLLECTS` (padrão Business/ERP): ninguém nasce quitado. O modelo é fixado na criação da conta.
@@ -91,10 +92,12 @@ Lacunas encontradas na análise de 20/10/2026, decididas e agora normativas.
 - **D9 — RLS por tenant e por conta.** Requisições com token de capacidade (`rpo_`, `rps_`) abrem a sessão do banco com o tenant **e** o `bill_id` do token; as políticas RLS conferem os dois. Um bug de autorização não expõe outra conta do tenant Pessoal.
 - **D10 — Token do organizador perdido = acesso perdido** na V1 (o histórico fica no aparelho). Documentado na interface; recuperação entra com contas opcionais.
 - **D11 — Criação anônima limitada** por IP em memória, sem armazenar IP (valor inicial na Expert Library: `RATE_LIMIT.ANON_BILL_CREATE`).
-- **D12 — Idempotência.** Escopo `(tenant, Idempotency-Key)`, validade 24 h. Mesma chave + mesmo corpo = mesma resposta; mesma chave + corpo diferente = `422 IDEMPOTENCY_MISMATCH`.
+- **D12 — Idempotência.** Escopo `(tenant, Idempotency-Key)`, validade 24 h (`IDEMPOTENCY.TTL`). Mesma chave + mesmo corpo = mesma resposta (inclusive erro de regra, com cabeçalho `Idempotent-Replayed: true`); mesma chave + corpo diferente = `422 IDEMPOTENCY_MISMATCH`. Com token de capacidade o escopo é `(tenant, conta, chave)`, porque o tenant Pessoal é compartilhado.
 
 **Técnicas**
 
 - **D13 — Ledger: lista fechada de eventos.** `BILL_CREATED, SPLIT_CONFIRMED, SPLIT_COMPLEMENTED, SPLIT_UNLOCKED, ORGANIZER_SHARE_SELF_SETTLED, PAYMENT_CREATED, PAYMENT_PENDING, PAYMENT_AUTHORIZED, PAYMENT_CONFIRMED, PAYMENT_FAILED, PAYMENT_EXPIRED, PAYMENT_REJECTED, PAYMENT_REFUNDED, PAYMENT_CHARGEDBACK, REFUND_RECORDED, BILL_STATE_CHANGED, BILL_CANCELLED, ERP_ACKNOWLEDGED`. Tipo novo exige versão nova desta lista. A reconstrução de devido/pago usa só o ledger.
 - **D14 — Dinheiro na fronteira.** Banco `bigint`; domínio `BigInt`; API em centavos como inteiro JSON, validado entre 0 e 100.000.000.000 (R$ 1 bilhão, abaixo de 2^53). Nunca float.
 - **D15 — Tempo.** Relógio injetável no domínio e nos serviços (expiração testável); métricas mensais em `America/Sao_Paulo`.
+- **D16 — Dois papéis no banco** (21/10/2026). `rachapay_owner` é dono do schema e só roda migrations (`MIGRATION_DATABASE_URL`); `rachapay_app` é o da aplicação (`DATABASE_URL`) e só recebe DML — no histórico financeiro, só `INSERT`/`SELECT`. Os dois sem superuser e sem BYPASSRLS. Assim a aplicação não consegue desligar RLS nem remover as triggers do ledger. Em produção o servidor recusa subir se o papel da aplicação for superuser, BYPASSRLS ou dono das tabelas.
+- **D17 — Retentativa de webhook de saída** (21/10/2026). 12 tentativas, 10 s dobrando, intervalo máximo 6 h: janela total ≈ 5,7 h, depois `DEAD` (reprocessável). Regra `WEBHOOK.RETRY` na Expert Library. Resolve a conta impossível "8 tentativas … até 6 h".

@@ -1,0 +1,35 @@
+# Ambiente para conhecer o RachaPay localmente. Segredos de DESENVOLVIMENTO — nunca use em produção.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./scripts/db-init.sql:/docker-entrypoint-initdb.d/00-db-init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d rachapay']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      PORT: '3000'
+      PUBLIC_BASE_URL: http://localhost:3000
+      DATABASE_URL: postgresql://rachapay_app:rachapay_dev@db:5432/rachapay
+      MIGRATION_DATABASE_URL: postgresql://rachapay_owner:rachapay_owner_dev@db:5432/rachapay
+      APP_ENCRYPTION_KEY: ZGV2LW9ubHktMzItYnl0ZXMta2V5LWZvci1yYWNoYXA=
+      ADMIN_TOKEN: dev-admin-token-change-me-0000000000000000
+      SANDBOX_ENABLED: 'true'
+      SANDBOX_WEBHOOK_SECRET: dev-sandbox-webhook-secret-change-me
+
+volumes:
+  pgdata:
