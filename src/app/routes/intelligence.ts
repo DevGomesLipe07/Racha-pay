@@ -12,9 +12,9 @@ import type { PolicyAction } from '../../modules/policies/policy-engine.ts';
 import type { ServiceContext } from '../../modules/service-context.ts';
 import type { Principal } from '../auth.ts';
 import type { AppDeps } from '../deps.ts';
-import { forbidden, unprocessable } from '../errors.ts';
+import { badRequest, forbidden, unprocessable } from '../errors.ts';
 import { auditAllowed, preAuthorize } from '../guard.ts';
-import { param, parseBody } from '../http-helpers.ts';
+import { param, parseBody, uuid } from '../http-helpers.ts';
 import { routeKit } from './common.ts';
 
 const ZERO_TENANT = '00000000-0000-0000-0000-000000000000';
@@ -44,8 +44,13 @@ export function registerIntelligenceRoutes(router: Router, deps: AppDeps): void 
   ) => {
     const principal = await principalOf(req);
     if (principal.kind !== 'apiKey' && principal.kind !== 'admin') throw forbidden('use uma chave de API do tenant ou a credencial de administrador');
-    if (opts.tenantOnly && principal.kind !== 'apiKey') throw forbidden('casos são do tenant: use uma chave de API');
-    const tenantId = principal.kind === 'apiKey' ? principal.tenantId : null;
+    let tenantId: string | null = principal.kind === 'apiKey' ? principal.tenantId : null;
+    if (opts.tenantOnly && principal.kind === 'admin') {
+      // Casos são do tenant; o administrador da plataforma atua num tenant informado (ex.: o Pessoal, sem chave de API).
+      const t = req.query.get('tenantId');
+      if (!t || !uuid.safeParse(t).success) throw badRequest('TENANT_REQUIRED', 'administrador: informe tenantId');
+      tenantId = t;
+    }
     const decision = await preAuthorize(pool, principal, action, { tenantId, billId: null }, req.correlationId);
     const scope: DbScope = tenantId ? { kind: 'tenant', tenantId } : { kind: 'platform' };
     return withScope(pool, scope, async (client) => {

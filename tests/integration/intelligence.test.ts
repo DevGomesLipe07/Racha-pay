@@ -106,6 +106,27 @@ test('administrador da plataforma governa escopos compartilhados; tenant não me
   assert.equal((await api(app, 'POST', '/v1/knowledge', { as: { admin: 'errado-'.padEnd(43, 'x'), actor: 'x' }, body: {} })).status, 401);
 });
 
+test('CBR do tenant Pessoal: o administrador da plataforma lista e resolve (com tenantId), auditado', async () => {
+  const PERSONAL = '00000000-0000-4000-8000-000000000001';
+  const r = await api(app, 'POST', '/v1/bills', { body: { title: 'Pessoal', organizerName: 'Ana', participants: ['Bia'] } });
+  const org = { organizer: r.body.organizerToken };
+  await api(app, 'POST', `/v1/bills/${r.body.bill.id}/items`, { as: org, body: { description: 'x', unitPriceCents: 1000 } });
+  await api(app, 'POST', `/v1/bills/${r.body.bill.id}/splits`, { as: org, body: { expectedTotalCents: 1000 } });
+  const p = await api(app, 'POST', '/v1/payments', { as: { share: r.body.shareToken }, headers: { 'idempotency-key': `k-${randomUUID()}` }, body: { billId: r.body.bill.id, participantId: r.body.bill.participants[1].id } });
+  await api(app, 'POST', `/v1/bills/${r.body.bill.id}/payments/${p.body.payment.id}/reject`, { as: org });
+
+  assert.equal((await api(app, 'GET', '/v1/cbr/cases', { as: admin('ops') })).body.error.code, 'TENANT_REQUIRED');
+  const list = await api(app, 'GET', `/v1/cbr/cases?tenantId=${PERSONAL}&status=OPEN`, { as: admin('ops') });
+  assert.equal(list.status, 200, JSON.stringify(list.body));
+  const mine = list.body.cases.filter((c: { billId: string }) => c.billId === r.body.bill.id);
+  assert.equal(mine.length, 1);
+  const res = await api(app, 'POST', `/v1/cbr/cases/${mine[0].id}/resolve?tenantId=${PERSONAL}`, { as: admin('ops'), body: { decision: 'NO_ACTION', outcome: 'organizador recusou com razão' } });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.case.resolvedBy, 'admin:ops');
+  const audit = await inScope(db, { kind: 'tenant', tenantId: PERSONAL }, (c) => c.query("SELECT actor_id FROM audit_log WHERE action = 'cbr.resolve' AND allowed"));
+  assert.ok(audit.rows.some((a) => a.actor_id === 'admin:ops'));
+});
+
 test('CBR: casos → similaridade (Jaccard) → decisão humana → 3 iguais viram proposta LEARNED em DRAFT; nada ativa sozinho', async () => {
   const t = await tenantWithKeys();
   // Três pagamentos manuais recusados pelo caixa geram três casos iguais.
