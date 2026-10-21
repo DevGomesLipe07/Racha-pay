@@ -53,6 +53,13 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e
+      - name: backup + restore verificado (D22)
+        env:
+          BACKUP_DATABASE_URL: postgresql://rachapay_backup:rachapay_backup_dev@localhost:5432/rachapay_test
+          RESTORE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: |
+          npm run backup -- --out /tmp/rachapay.dump
+          npm run backup:verify -- --dump /tmp/rachapay.dump
 
   docker:
     runs-on: ubuntu-latest

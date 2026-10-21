@@ -11,6 +11,8 @@
     "start": "node src/main.ts",
     "migrate": "node scripts/migrate.ts",
     "tenant:create": "node scripts/create-tenant.ts",
+    "backup": "node scripts/backup.ts",
+    "backup:verify": "node scripts/verify-backup.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test:unit": "node --test \"tests/unit/**/*.test.ts\"",
     "test:integration": "node --test --test-concurrency=1 \"tests/integration/**/*.test.ts\"",
