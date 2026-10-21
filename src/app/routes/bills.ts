@@ -13,7 +13,7 @@ import { SPLIT_MODES } from '../../modules/split/engine.ts';
 import { centsToJson } from '../../modules/split/money.ts';
 import { resolveKnowledge } from '../../modules/expert/library.ts';
 import { PERSONAL_TENANT_ID } from '../auth.ts';
-import { AppError, conflict, forbidden, notFound } from '../errors.ts';
+import { AppError, conflict, forbidden, notFound, unprocessable } from '../errors.ts';
 import { auditAllowed, preAuthorize } from '../guard.ts';
 import { cents, param, parseBody, uuid } from '../http-helpers.ts';
 import type { AppDeps } from '../deps.ts';
@@ -29,8 +29,12 @@ const createSchema = z
     participants: z.array(name60).max(99).optional(),
     collectionModel: z.enum(COLLECTION_MODELS).optional(),
     tableLabel: z.string().trim().min(1).max(40).optional(),
+    /** Só chave de API (Business): mesa aberta num estabelecimento do tenant. */
+    establishmentId: uuid.optional(),
   })
   .strict();
+
+const listStates = ['DRAFT', 'OPEN', 'PARTIALLY_PAID', 'SETTLEMENT_PENDING', 'SETTLED', 'REOPENED', 'CANCELLED'] as const;
 
 const patchSchema = z
   .object({
@@ -78,6 +82,7 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
     if (principal.kind === 'anonymous') {
       tenantId = PERSONAL_TENANT_ID;
       if (collectionModel === 'MERCHANT_COLLECTS') throw forbidden('conta pessoal é sempre de quem organiza (ORGANIZER_COLLECTS)');
+      if (input.establishmentId) throw forbidden('estabelecimento exige chave de API do tenant');
       collectionModel = 'ORGANIZER_COLLECTS';
       const limits = await withScope(pool, { kind: 'tenant', tenantId }, (c) =>
         resolveKnowledge(c, 'RATE_LIMIT.ANON_BILL_CREATE', { tenantId }, clock.now()),
@@ -101,6 +106,7 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
         ...(input.organizerName ? { organizerName: input.organizerName } : {}),
         ...(input.participants ? { participantNames: input.participants } : {}),
         ...(input.tableLabel ? { tableLabel: input.tableLabel } : {}),
+        ...(input.establishmentId ? { establishmentId: input.establishmentId } : {}),
       });
       await auditAllowed(client, principal, decision, { tenantId, billId }, req.correlationId);
       return {
@@ -117,6 +123,53 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
     '/v1/bills/:id',
     onBill('bill.read', async () => undefined),
   );
+
+  // Lista do tenant (painel Business): só credencial de tenant; token de conta não lista nada.
+  router.get('/v1/bills', async (req) => {
+    const principal = await principalOf(req);
+    if (principal.kind !== 'apiKey') throw forbidden('listar contas exige chave de API do tenant');
+    const state = req.query.get('state');
+    if (state && !(listStates as readonly string[]).includes(state)) throw unprocessable('VALIDATION_ERROR', 'state inválido');
+    const open = req.query.get('open') === 'true';
+    const establishmentId = req.query.get('establishmentId');
+    if (establishmentId && !uuid.safeParse(establishmentId).success) throw unprocessable('VALIDATION_ERROR', 'establishmentId inválido');
+    const limit = Math.min(Math.max(Number(req.query.get('limit') ?? 50) || 50, 1), 200);
+    await preAuthorize(pool, principal, 'bill.read', { tenantId: principal.tenantId, billId: null }, req.correlationId);
+    const body = await withScope(pool, { kind: 'tenant', tenantId: principal.tenantId }, async (client) => {
+      const { rows } = await client.query(
+        `SELECT b.id, b.title, b.kind, b.state, b.table_label, b.external_reference, b.establishment_id, b.created_at, b.updated_at,
+                v.total_cents,
+                (SELECT count(*)::int FROM participants p WHERE p.bill_id = b.id) AS participants,
+                (SELECT count(*)::int FROM payments p WHERE p.bill_id = b.id AND p.method = 'MANUAL' AND p.status = 'PENDING') AS pending_manual,
+                (SELECT count(*)::int FROM cbr_cases c WHERE c.bill_id = b.id AND c.status = 'OPEN') AS open_cases
+           FROM bills b
+           LEFT JOIN split_versions v ON v.bill_id = b.id AND v.version = b.active_split_version
+          WHERE ($1::text IS NULL OR b.state = $1)
+            AND (NOT $2 OR b.state NOT IN ('SETTLED', 'CANCELLED'))
+            AND ($3::uuid IS NULL OR b.establishment_id = $3)
+          ORDER BY b.updated_at DESC LIMIT $4`,
+        [state, open, establishmentId, limit],
+      );
+      return {
+        bills: rows.map((r) => ({
+          id: r.id,
+          title: r.title,
+          kind: r.kind,
+          state: r.state,
+          tableLabel: r.table_label,
+          externalReference: r.external_reference,
+          establishmentId: r.establishment_id,
+          totalCents: r.total_cents === null ? null : centsToJson(r.total_cents),
+          participants: r.participants,
+          pendingManualPayments: r.pending_manual,
+          openCases: r.open_cases,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        })),
+      };
+    });
+    return { status: 200, body };
+  });
 
   router.patch(
     '/v1/bills/:id',

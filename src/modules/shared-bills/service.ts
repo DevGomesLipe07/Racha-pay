@@ -18,6 +18,7 @@ import {
   loadBill,
   loadSplitVersion,
   nextSplitVersion,
+  knowledgeContext,
   type BillAggregate,
   type BillKind,
   type BillRow,
@@ -68,6 +69,9 @@ export interface CreateBillInput {
   participantNames?: string[];
   tableLabel?: string;
   externalReference?: string;
+  /** Estabelecimento do tenant (Business): regras de escopo ESTABLISHMENT passam a valer para a conta. */
+  establishmentId?: string;
+  erpProvider?: string;
 }
 
 export interface CreatedBill {
@@ -85,11 +89,32 @@ export async function createBill(client: PoolClient, ctx: ServiceContext, billId
   if (input.collectionModel === 'ORGANIZER_COLLECTS' && !input.organizerName) {
     throw unprocessable('ORGANIZER_REQUIRED', 'quem organiza precisa de um nome (ele já pagou e cobra os demais)');
   }
-  const service = await resolveKnowledge(client, 'SERVICE_CHARGE.DEFAULT', { tenantId: ctx.tenantId, segment: input.kind }, ctx.now);
+  if (input.establishmentId) {
+    const est = await client.query('SELECT 1 FROM establishments WHERE id = $1', [input.establishmentId]);
+    if (est.rowCount === 0) throw unprocessable('ESTABLISHMENT_NOT_FOUND', 'estabelecimento não cadastrado');
+  }
+  const service = await resolveKnowledge(
+    client,
+    'SERVICE_CHARGE.DEFAULT',
+    knowledgeContext({ tenant_id: ctx.tenantId, kind: input.kind, establishment_id: input.establishmentId ?? null, erp_provider: input.erpProvider ?? null }),
+    ctx.now,
+  );
   await client.query(
-    `INSERT INTO bills (id, tenant_id, kind, title, collection_model, service_bp, table_label, external_reference, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
-    [billId, ctx.tenantId, input.kind, input.title, input.collectionModel, service.content.bp, input.tableLabel ?? null, input.externalReference ?? null, ctx.now],
+    `INSERT INTO bills (id, tenant_id, kind, title, collection_model, service_bp, table_label, external_reference, establishment_id, erp_provider, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)`,
+    [
+      billId,
+      ctx.tenantId,
+      input.kind,
+      input.title,
+      input.collectionModel,
+      service.content.bp,
+      input.tableLabel ?? null,
+      input.externalReference ?? null,
+      input.establishmentId ?? null,
+      input.erpProvider ?? null,
+      ctx.now,
+    ],
   );
   const names = [...(input.organizerName ? [input.organizerName] : []), ...(input.participantNames ?? [])];
   for (const [position, name] of names.entries()) {
@@ -149,7 +174,7 @@ export async function updateBill(client: PoolClient, ctx: ServiceContext, billId
   const money = patch.splitMode !== undefined || patch.discountCents !== undefined || patch.serviceBp !== undefined || patch.tipCents !== undefined;
   if (money) requireDraft(bill, 'alterar modo, desconto, serviço ou gorjeta');
   if (patch.serviceBp !== undefined) {
-    const service = await resolveKnowledge(client, 'SERVICE_CHARGE.DEFAULT', { tenantId: ctx.tenantId, segment: bill.kind }, ctx.now);
+    const service = await resolveKnowledge(client, 'SERVICE_CHARGE.DEFAULT', knowledgeContext(bill), ctx.now);
     if (patch.serviceBp > service.content.maxBp) {
       throw unprocessable('SERVICE_BP_OUT_OF_RANGE', `serviço máximo: ${service.content.maxBp} bp`, { maxBp: service.content.maxBp });
     }
@@ -317,7 +342,7 @@ export interface SplitPlan {
 async function splitRules(client: PoolClient, ctx: ServiceContext, bill: BillRow) {
   const keys: KnowledgeKey[] = ['SERVICE_CHARGE.DEFAULT', 'DISCOUNT.ALLOCATION', 'TIP.ALLOCATION', 'ROUNDING.ALLOCATION'];
   const resolved: ResolvedKnowledge<KnowledgeKey>[] = [];
-  for (const k of keys) resolved.push(await resolveKnowledge(client, k, { tenantId: ctx.tenantId, segment: bill.kind }, ctx.now));
+  for (const k of keys) resolved.push(await resolveKnowledge(client, k, knowledgeContext(bill), ctx.now));
   const service = resolved[0] as ResolvedKnowledge<'SERVICE_CHARGE.DEFAULT'>;
   return { maxServiceBp: service.content.maxBp, rules: resolved.map(provenance) };
 }

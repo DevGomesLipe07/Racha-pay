@@ -14,6 +14,8 @@ export function createApi(cred) {
     const h = { ...headers };
     if (cred?.organizer) h.authorization = `Bearer ${cred.organizer}`;
     if (cred?.share) h['x-share-token'] = cred.share;
+    if (cred?.key) h.authorization = `Bearer ${cred.key}`;
+    if (cred?.actor) h['x-actor-id'] = cred.actor;
     if (body !== undefined) h['content-type'] = 'application/json';
     let res;
     try {

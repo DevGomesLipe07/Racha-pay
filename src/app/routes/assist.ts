@@ -10,7 +10,7 @@ import type { Router } from '../../infra/http/router.ts';
 import { AIUnavailableError, type ReceiptImage } from '../../modules/ai/provider.ts';
 import { parseReceiptText } from '../../modules/ai/receipt-parser.ts';
 import { explainReconciliation, SKILLS } from '../../modules/ai/skills.ts';
-import { monthMetrics, saoPauloMonth } from '../../modules/analytics/metrics.ts';
+import { dailyReport, monthMetrics, saoPauloDate, saoPauloMonth } from '../../modules/analytics/metrics.ts';
 import { loadReconciliation } from '../../modules/reconciliation/service.ts';
 import { loadBill } from '../../modules/shared-bills/repo.ts';
 import type { AppDeps } from '../deps.ts';
@@ -93,6 +93,16 @@ export function registerAssistRoutes(router: Router, deps: AppDeps): void {
     status: 200,
     body: { skills: SKILLS.map((s) => ({ ...s, available: s.usesAI === 'never' || s.deterministicFallback !== null || ai.available })), aiProvider: ai.name },
   }));
+
+  router.get('/v1/reports/daily', async (req) => {
+    const principal = await principalOf(req);
+    if (principal.kind !== 'apiKey') throw forbidden('relatório diário exige chave de API do tenant');
+    const date = req.query.get('date') ?? saoPauloDate(clock.now());
+    if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)) throw badRequest('INVALID_DATE', 'date deve ser YYYY-MM-DD');
+    await preAuthorize(pool, principal, 'metrics.read', { tenantId: principal.tenantId, billId: null }, req.correlationId);
+    const report = await withScope(pool, { kind: 'tenant', tenantId: principal.tenantId }, (c) => dailyReport(c, date));
+    return { status: 200, body: { report } };
+  });
 
   router.get('/v1/metrics', async (req) => {
     const principal = await principalOf(req);

@@ -10,7 +10,7 @@ import { appendLedger } from '../ledger/ledger-repo.ts';
 import { refreshBillState, loadReconciliation, paymentFromRow } from '../reconciliation/service.ts';
 import type { BillState } from '../reconciliation/reconcile.ts';
 import type { ServiceContext } from '../service-context.ts';
-import { loadBill, type BillRow } from '../shared-bills/repo.ts';
+import { knowledgeContext, loadBill, type BillRow } from '../shared-bills/repo.ts';
 import type { PaymentProvider } from './providers.ts';
 import {
   applyPaymentEvent,
@@ -103,7 +103,7 @@ export async function reservePayment(client: PoolClient, ctx: ServiceContext, in
     throw conflict('AMOUNT_EXCEEDS_BALANCE', 'valor maior que o saldo da parte', { availableToPayCents: Number(available) });
   }
 
-  const expiry = await resolveKnowledge(client, 'PAYMENT.EXPIRY', { tenantId: ctx.tenantId, segment: bill.kind }, ctx.now);
+  const expiry = await resolveKnowledge(client, 'PAYMENT.EXPIRY', knowledgeContext(bill), ctx.now);
   const minutes = input.method === 'MANUAL' ? expiry.content.manualMinutes : expiry.content.sandboxMinutes;
   const expiresAt = new Date(ctx.now.getTime() + minutes * 60_000);
   const paymentId = randomUUID();

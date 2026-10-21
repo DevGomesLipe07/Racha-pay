@@ -25,8 +25,20 @@ export interface BillRow {
   table_label: string | null;
   external_reference: string | null;
   row_version: number;
+  establishment_id: string | null;
+  erp_provider: string | null;
   created_at: Date;
   updated_at: Date;
+}
+
+/** Contexto de resolução da Expert Library para esta conta (segmento, estabelecimento, ERP). */
+export function knowledgeContext(bill: Pick<BillRow, 'tenant_id' | 'kind' | 'establishment_id' | 'erp_provider'>) {
+  return {
+    tenantId: bill.tenant_id,
+    segment: bill.kind,
+    ...(bill.establishment_id ? { establishmentId: bill.establishment_id } : {}),
+    ...(bill.erp_provider ? { erp: bill.erp_provider } : {}),
+  };
 }
 
 export interface ParticipantRow {

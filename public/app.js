@@ -1,7 +1,9 @@
-// RachaPay Web/PWA — três telas: início (criar racha), organizador (#/o/<id>/<token>) e
-// convidado (#/s/<id>/<token>). Nenhuma regra financeira aqui: a API calcula, concilia e decide.
+// RachaPay Web/PWA — início (criar racha), organizador (#/o/<id>/<token>), convidado (#/s/<id>/<token>)
+// e painel do estabelecimento (#/b…, em business.js). Nenhuma regra financeira aqui: a API calcula,
+// concilia e decide.
 
 import { createApi, newKey } from './api.js';
+import { businessView } from './business.js';
 import { brl, KIND_LABEL, MODE_LABEL, parseMoney, parsePercentBp, pct, PAYMENT_LABEL, STATE_LABEL } from './format.js';
 import { actionButton, el, mount, qrSvg, storage, toast } from './ui.js';
 
@@ -18,7 +20,13 @@ function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
   if (parts[0] === 'o' && parts[1] && parts[2]) return organizerView(parts[1], parts[2]);
   if (parts[0] === 's' && parts[1] && parts[2]) return guestView(parts[1], parts[2]);
+  if (parts[0] === 'b') return businessView(parts.slice(1), { app, renderOrganizer, stateBadge, remember, poll, billSignature, setPoller });
   return homeView();
+}
+
+function setPoller(id) {
+  clearInterval(poller);
+  poller = id;
 }
 
 function remember(entry) {
@@ -88,7 +96,7 @@ function homeView() {
     { class: 'primary full', 'data-testid': 'create' },
   );
 
-  const history = storage.get(HISTORY_KEY, []);
+  const history = storage.get(HISTORY_KEY, []).filter((b) => b.role === 'o' || b.role === 's');
   mount(
     app,
     el(
@@ -137,8 +145,9 @@ async function organizerView(id, token) {
   if (bill.state !== 'DRAFT') poll(load, billSignature, rerender, bill);
 }
 
-function renderOrganizer(api, bill, load, token) {
-  const refresh = async (b) => renderOrganizer(api, b ?? (await load()), load, token);
+/** Tela de gestão da conta: organizador (token rpo_) ou operador do estabelecimento (opts.business). */
+function renderOrganizer(api, bill, load, token, opts = {}) {
+  const refresh = async (b) => renderOrganizer(api, b ?? (await load()), load, token, opts);
   const header = el(
     'section',
     { class: 'card' },
@@ -146,9 +155,9 @@ function renderOrganizer(api, bill, load, token) {
     el('p', { class: 'muted small' }, `${KIND_LABEL[bill.kind] ?? bill.kind} · ${MODE_LABEL[bill.splitMode]}`),
     bill.split && el('div', { class: 'big money', 'data-testid': 'total' }, brl(bill.split.totalCents)),
   );
-  if (bill.state === 'CANCELLED') return mount(app, header, el('p', { class: 'card muted' }, 'Este racha foi cancelado.'));
-  if (bill.split === null) return mount(app, header, ...draftSections(api, bill, refresh));
-  return mount(app, header, bill.state === 'SETTLED' && seal(), ...confirmedSections(api, bill, refresh, token));
+  if (bill.state === 'CANCELLED') return mount(app, opts.back, header, el('p', { class: 'card muted' }, 'Este racha foi cancelado.'));
+  if (bill.split === null) return mount(app, opts.back, header, ...draftSections(api, bill, refresh));
+  return mount(app, opts.back, header, bill.state === 'SETTLED' && seal(), ...confirmedSections(api, bill, refresh, token, opts));
 }
 
 function participantsSection(api, bill, refresh, editable) {
@@ -348,8 +357,9 @@ function draftSections(api, bill, refresh) {
   ];
 }
 
-function confirmedSections(api, bill, refresh, token) {
-  const share = storage.get(HISTORY_KEY, []).find((b) => b.id === bill.id && b.role === 'o')?.share;
+function confirmedSections(api, bill, refresh, token, opts = {}) {
+  const role = opts.business ? 'b' : 'o';
+  const share = storage.get(HISTORY_KEY, []).find((b) => b.id === bill.id && b.share)?.share;
   const shareUrl = share ? `${location.origin}/#/s/${bill.id}/${share}` : null;
   const organizerName = bill.participants.find((p) => p.isOrganizer)?.name ?? 'o organizador';
   const message = shareUrl ? `Racha "${bill.title}": veja e pague a sua parte (só a sua) ${shareUrl}` : '';
@@ -376,7 +386,7 @@ function confirmedSections(api, bill, refresh, token) {
           el('p', { class: 'muted small' }, 'O link dos convidados ficou no aparelho em que o racha foi criado. Gere um novo (o antigo continua valendo).'),
           actionButton('Gerar link para convidados', async () => {
             const r = await api.post(`/v1/bills/${bill.id}/share-links`);
-            remember({ id: bill.id, title: bill.title, role: 'o', token, share: r.shareToken });
+            remember({ id: bill.id, title: bill.title, role, token, share: r.shareToken });
             refresh();
           }, { class: 'primary' }),
         ],
@@ -416,7 +426,7 @@ function confirmedSections(api, bill, refresh, token) {
       'section',
       { class: 'card' },
       el('h2', {}, `Pix/dinheiro para confirmar (${pending.length})`),
-      el('p', { class: 'muted small' }, `Só toque "Recebi" depois de ver o dinheiro na conta de ${organizerName}.`),
+      el('p', { class: 'muted small' }, opts.business ? 'Só toque "Recebi" depois de ver o dinheiro no caixa.' : `Só toque "Recebi" depois de ver o dinheiro na conta de ${organizerName}.`),
       el(
         'ul',
         { class: 'list' },
@@ -521,7 +531,7 @@ function confirmedSections(api, bill, refresh, token) {
     bill.state !== 'CANCELLED' && itemForm(api, bill, refresh, 'Pediram mais alguma coisa?'),
     complement,
     manage,
-    el('p', { class: 'muted small' }, 'Guarde este link: ele é a chave do racha. ', el('a', { href: `#/o/${bill.id}/${token}` }, 'link do organizador')),
+    !opts.business && el('p', { class: 'muted small' }, 'Guarde este link: ele é a chave do racha. ', el('a', { href: `#/o/${bill.id}/${token}` }, 'link do organizador')),
   ];
 }
 

@@ -69,8 +69,9 @@ export async function syncFromErp(
       ...(c.participants ? { participantNames: c.participants } : {}),
       ...(c.tableLabel ? { tableLabel: c.tableLabel } : {}),
       externalReference: c.externalReference,
+      ...(estId ? { establishmentId: estId } : {}),
+      erpProvider: provider,
     });
-    await client.query('UPDATE bills SET establishment_id = $2, erp_provider = $3 WHERE id = $1', [billId, estId, provider]);
     for (const it of c.items) {
       await bills.addItem(client, ctx, billId, { description: it.description, unitPriceCents: BigInt(it.unitPriceCents), quantity: it.quantity, externalRef: it.externalRef });
     }

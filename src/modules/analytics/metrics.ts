@@ -84,6 +84,91 @@ export async function monthMetrics(client: PoolClient, month: string): Promise<M
   };
 }
 
+export interface DailyRow {
+  establishmentId: string | null;
+  establishmentName: string | null;
+  billsOpened: number;
+  billsSettled: number;
+  billsStillOpen: number;
+  confirmed: { declaredManualCents: number; sandboxTestCents: number; providerCents: number };
+  reversedCents: number;
+  openCases: number;
+}
+
+/** Conciliação diária por estabelecimento (dia no fuso de São Paulo), a partir do ledger. */
+export async function dailyReport(client: PoolClient, date: string): Promise<{ date: string; timezone: 'America/Sao_Paulo'; establishments: DailyRow[] }> {
+  const { rows } = await client.query<{
+    establishment_id: string | null;
+    name: string | null;
+    opened: number;
+    settled: number;
+    still_open: number;
+    manual: string;
+    sandbox: string;
+    provider: string;
+    reversed: string;
+    open_cases: number;
+  }>(
+    `WITH d AS (SELECT to_date($1, 'YYYY-MM-DD') AS day),
+     ev AS (
+       SELECT l.bill_id, l.type, l.payload, (l.occurred_at::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date AS day
+         FROM ledger_entries l
+     ),
+     money AS (
+       SELECT ev.bill_id,
+              SUM(CASE WHEN ev.type = 'PAYMENT_CONFIRMED' AND p.method = 'MANUAL' THEN (ev.payload->>'amountCents')::bigint ELSE 0 END) AS manual,
+              SUM(CASE WHEN ev.type = 'PAYMENT_CONFIRMED' AND p.method = 'SANDBOX' THEN (ev.payload->>'amountCents')::bigint ELSE 0 END) AS sandbox,
+              SUM(CASE WHEN ev.type = 'PAYMENT_CONFIRMED' AND p.method LIKE 'PSP:%' THEN (ev.payload->>'amountCents')::bigint ELSE 0 END) AS provider,
+              SUM(CASE WHEN ev.type IN ('PAYMENT_REFUNDED', 'PAYMENT_CHARGEDBACK') THEN (ev.payload->>'amountCents')::bigint ELSE 0 END) AS reversed
+         FROM ev JOIN payments p ON p.id = (ev.payload->>'paymentId')::uuid, d
+        WHERE ev.day = d.day AND ev.type IN ('PAYMENT_CONFIRMED', 'PAYMENT_REFUNDED', 'PAYMENT_CHARGEDBACK')
+        GROUP BY ev.bill_id
+     ),
+     per_bill AS (
+       SELECT b.id, b.establishment_id, b.state,
+              ((b.created_at AT TIME ZONE 'America/Sao_Paulo')::date = d.day) AS opened_today,
+              EXISTS (SELECT 1 FROM ev WHERE ev.bill_id = b.id AND ev.type = 'BILL_STATE_CHANGED' AND ev.payload->>'to' = 'SETTLED' AND ev.day = d.day) AS settled_today,
+              (SELECT count(*) FROM cbr_cases c WHERE c.bill_id = b.id AND c.status = 'OPEN') AS cases
+         FROM bills b, d
+     )
+     SELECT pb.establishment_id, e.name,
+            count(*) FILTER (WHERE pb.opened_today)::int AS opened,
+            count(*) FILTER (WHERE pb.settled_today)::int AS settled,
+            count(*) FILTER (WHERE pb.opened_today AND pb.state NOT IN ('SETTLED', 'CANCELLED'))::int AS still_open,
+            COALESCE(SUM(m.manual), 0)::bigint AS manual,
+            COALESCE(SUM(m.sandbox), 0)::bigint AS sandbox,
+            COALESCE(SUM(m.provider), 0)::bigint AS provider,
+            COALESCE(SUM(m.reversed), 0)::bigint AS reversed,
+            COALESCE(SUM(pb.cases), 0)::int AS open_cases
+       FROM per_bill pb
+       LEFT JOIN money m ON m.bill_id = pb.id
+       LEFT JOIN establishments e ON e.id = pb.establishment_id
+      GROUP BY pb.establishment_id, e.name
+     HAVING count(*) FILTER (WHERE pb.opened_today OR pb.settled_today) > 0 OR COALESCE(SUM(m.manual + m.sandbox + m.provider + m.reversed), 0) > 0
+      ORDER BY e.name NULLS LAST`,
+    [date],
+  );
+  return {
+    date,
+    timezone: 'America/Sao_Paulo',
+    establishments: rows.map((r) => ({
+      establishmentId: r.establishment_id,
+      establishmentName: r.name,
+      billsOpened: r.opened,
+      billsSettled: r.settled,
+      billsStillOpen: r.still_open,
+      confirmed: { declaredManualCents: Number(r.manual), sandboxTestCents: Number(r.sandbox), providerCents: Number(r.provider) },
+      reversedCents: Number(r.reversed),
+      openCases: r.open_cases,
+    })),
+  };
+}
+
+/** "YYYY-MM-DD" do instante dado, no fuso de São Paulo. */
+export function saoPauloDate(at: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
+}
+
 /** "YYYY-MM" do instante dado, no fuso de São Paulo. */
 export function saoPauloMonth(at: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' }).formatToParts(at);
