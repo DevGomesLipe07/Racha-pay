@@ -1,6 +1,6 @@
 // Entrada: configuração → migrations (se MIGRATION_DATABASE_URL) → checagem do papel → servidor.
 
-import { buildServer } from './app/app.ts';
+import { buildServer, createAIProvider } from './app/app.ts';
 import { ConfigError, loadConfig } from './config.ts';
 import { systemClock } from './infra/clock.ts';
 import { migrate } from './infra/db/migrate.ts';
@@ -39,7 +39,8 @@ async function main(): Promise<void> {
   }
 
   const providers = createProviderRegistry({ sandboxEnabled: config.SANDBOX_ENABLED, sandboxSecret: config.SANDBOX_WEBHOOK_SECRET });
-  const server = buildServer({ pool, config, clock: systemClock, logger, rateLimiter: new RateLimiter(), providers });
+  const ai = createAIProvider(config);
+  const server = buildServer({ pool, config, clock: systemClock, logger, rateLimiter: new RateLimiter(), providers, ai });
   server.listen(config.PORT, () => logger.info('listening', { port: config.PORT, env: config.NODE_ENV, sandbox: config.SANDBOX_ENABLED }));
   const stopWorker = startWorker({
     pool,

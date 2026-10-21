@@ -11,6 +11,18 @@ import { registerPaymentRoutes } from './routes/payments.ts';
 import { registerWebhookRoutes } from './routes/webhooks.ts';
 import { registerErpRoutes } from './routes/erp.ts';
 import { registerIntelligenceRoutes } from './routes/intelligence.ts';
+import { registerAssistRoutes } from './routes/assist.ts';
+import type { Config } from '../config.ts';
+import { AnthropicProvider } from '../modules/ai/anthropic-provider.ts';
+import { NullAIProvider, type AIProvider } from '../modules/ai/provider.ts';
+
+/** IA conforme a configuração; sem chave, o sistema roda com o NullAIProvider. */
+export function createAIProvider(config: Config): AIProvider {
+  if (config.AI_PROVIDER === 'anthropic' && config.ANTHROPIC_API_KEY) {
+    return new AnthropicProvider({ apiKey: config.ANTHROPIC_API_KEY, model: config.AI_MODEL, ...(config.ANTHROPIC_BASE_URL ? { baseURL: config.ANTHROPIC_BASE_URL } : {}) });
+  }
+  return new NullAIProvider();
+}
 
 export const PUBLIC_DIR = fileURLToPath(new URL('../../public/', import.meta.url));
 
@@ -36,6 +48,7 @@ export function buildRouter(deps: AppDeps): Router {
   registerWebhookRoutes(router, deps);
   registerErpRoutes(router, deps);
   registerIntelligenceRoutes(router, deps);
+  registerAssistRoutes(router, deps);
   return router;
 }
 

@@ -30,6 +30,8 @@ const schema = z.object({
   AI_PROVIDER: z.enum(['none', 'anthropic']).default('none'),
   ANTHROPIC_API_KEY: z.string().optional(),
   AI_MODEL: z.string().default('claude-sonnet-5-5'),
+  /** Só para testes (servidor falso) ou proxy corporativo. */
+  ANTHROPIC_BASE_URL: z.url().optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

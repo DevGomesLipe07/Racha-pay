@@ -41,14 +41,14 @@ function clientIp(req: IncomingMessage, trustProxy: boolean): string {
   return req.socket.remoteAddress ?? 'unknown';
 }
 
-async function readBody(req: IncomingMessage): Promise<Buffer> {
+async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   const declared = Number(req.headers['content-length'] ?? 0);
-  if (declared > MAX_BODY_BYTES) throw new AppError(413, 'PAYLOAD_TOO_LARGE', 'corpo da requisição grande demais');
+  if (declared > limit) throw new AppError(413, 'PAYLOAD_TOO_LARGE', 'corpo da requisição grande demais');
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY_BYTES) throw new AppError(413, 'PAYLOAD_TOO_LARGE', 'corpo da requisição grande demais');
+    if (size > limit) throw new AppError(413, 'PAYLOAD_TOO_LARGE', 'corpo da requisição grande demais');
     chunks.push(chunk as Buffer);
   }
   return Buffer.concat(chunks);
@@ -108,7 +108,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
     }
     route = `${method} ${matched.route.pattern}`;
 
-    const rawBody = method === 'GET' || method === 'DELETE' ? Buffer.alloc(0) : await readBody(req);
+    const rawBody = method === 'GET' || method === 'DELETE' ? Buffer.alloc(0) : await readBody(req, matched.route.maxBodyBytes ?? MAX_BODY_BYTES);
     let body: unknown;
     if (rawBody.length > 0) {
       const type = req.headers['content-type'] ?? '';

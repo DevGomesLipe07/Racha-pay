@@ -24,26 +24,32 @@ export interface HttpResponse {
 
 export type Handler = (req: HttpRequest) => Promise<HttpResponse>;
 
+export interface RouteOptions {
+  /** Limite de corpo desta rota (padrão do servidor: 256 KiB). */
+  maxBodyBytes?: number;
+}
+
 interface Route {
   method: Method;
   pattern: string;
   segments: string[];
   handler: Handler;
+  maxBodyBytes?: number;
 }
 
 export class Router {
   private readonly routes: Route[] = [];
 
-  add(method: Method, pattern: string, handler: Handler): this {
-    this.routes.push({ method, pattern, segments: pattern.split('/').filter(Boolean), handler });
+  add(method: Method, pattern: string, handler: Handler, opts: RouteOptions = {}): this {
+    this.routes.push({ method, pattern, segments: pattern.split('/').filter(Boolean), handler, ...(opts.maxBodyBytes ? { maxBodyBytes: opts.maxBodyBytes } : {}) });
     return this;
   }
 
   get(p: string, h: Handler) {
     return this.add('GET', p, h);
   }
-  post(p: string, h: Handler) {
-    return this.add('POST', p, h);
+  post(p: string, h: Handler, opts?: RouteOptions) {
+    return this.add('POST', p, h, opts);
   }
   put(p: string, h: Handler) {
     return this.add('PUT', p, h);

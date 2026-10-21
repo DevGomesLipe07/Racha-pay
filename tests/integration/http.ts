@@ -1,5 +1,5 @@
 import type { AddressInfo } from 'node:net';
-import { buildServer } from '../../src/app/app.ts';
+import { buildServer, createAIProvider } from '../../src/app/app.ts';
 import { DEV_SECRETS, loadConfig } from '../../src/config.ts';
 import { manualClock } from '../../src/infra/clock.ts';
 import { newToken } from '../../src/infra/crypto/hash.ts';
@@ -25,7 +25,7 @@ export async function startApp(db: TestDb, env: Record<string, string> = {}): Pr
   const config = loadConfig({ DATABASE_URL: TEST_DATABASE_URL, ...DEV_SECRETS, NODE_ENV: 'test', ...env });
   const clock = manualClock('2026-10-21T12:00:00.000Z');
   const providers = createProviderRegistry({ sandboxEnabled: config.SANDBOX_ENABLED, sandboxSecret: config.SANDBOX_WEBHOOK_SECRET });
-  const server = buildServer({ pool: db.app, config, clock, logger: silentLogger, rateLimiter: new RateLimiter(() => clock.now().getTime()), providers });
+  const server = buildServer({ pool: db.app, config, clock, logger: silentLogger, rateLimiter: new RateLimiter(() => clock.now().getTime()), providers, ai: createAIProvider(config) });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
   return {

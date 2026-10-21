@@ -3,7 +3,7 @@
 
 import { withScope } from '../../infra/db/tx.ts';
 import type { PoolClient } from '../../infra/db/pool.ts';
-import type { HttpRequest, HttpResponse } from '../../infra/http/router.ts';
+import type { Handler, HttpRequest, HttpResponse } from '../../infra/http/router.ts';
 import type { PolicyAction } from '../../modules/policies/policy-engine.ts';
 import type { ServiceContext } from '../../modules/service-context.ts';
 import { billView } from '../../modules/shared-bills/view.ts';
@@ -45,7 +45,7 @@ export function routeKit(deps: AppDeps) {
   };
 
   const onBill =
-    (action: PolicyAction, fn: BillAction, opts: { status?: number; respond?: 'bill' | 'result' } = {}) =>
+    (action: PolicyAction, fn: BillAction, opts: { status?: number; respond?: 'bill' | 'result' } = {}): Handler =>
     async (req: HttpRequest): Promise<HttpResponse> => ({
       status: opts.status ?? 200,
       body: await runOnBill(req, param(req, 'id'), action, fn, opts),
