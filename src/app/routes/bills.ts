@@ -141,6 +141,18 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
   );
 
   router.post(
+    '/v1/bills/:id/share-links',
+    onBill(
+      'bill.edit',
+      async (client, ctx, _req, billId) => {
+        const shareToken = await bills.issueShareToken(client, ctx, billId);
+        return { shareToken, links: links(billId, shareToken) };
+      },
+      { status: 201, respond: 'result' },
+    ),
+  );
+
+  router.post(
     '/v1/bills/:id/participants',
     onBill(
       'bill.edit',

@@ -192,6 +192,32 @@ test('HTTP: headers de segurança, envelope de erro, JSON inválido, tipo errado
   assert.equal(echoed.headers.get('x-correlation-id'), 'meu-id-123456');
 });
 
+test('organizador emite novo link de convidado; convidado não emite; o antigo continua valendo', async () => {
+  const b = await newPersonalBill();
+  const r = await api(app, 'POST', `/v1/bills/${b.id}/share-links`, { as: b.org });
+  assert.equal(r.status, 201);
+  assert.match(r.body.shareToken, /^rps_/);
+  assert.match(r.body.links.share, new RegExp(`/#/s/${b.id}/rps_`));
+  assert.equal((await api(app, 'GET', `/v1/bills/${b.id}`, { as: { share: r.body.shareToken } })).status, 200);
+  assert.equal((await api(app, 'GET', `/v1/bills/${b.id}`, b.guest ? { as: b.guest } : {})).status, 200);
+  assert.equal((await api(app, 'POST', `/v1/bills/${b.id}/share-links`, { as: b.guest })).status, 403);
+});
+
+test('Web/PWA: serve o app com CSP estrita e não sai da pasta public', async () => {
+  const home = await fetch(`${app.base}/`);
+  assert.equal(home.status, 200);
+  assert.match(home.headers.get('content-type') ?? '', /text\/html/);
+  assert.match(home.headers.get('content-security-policy') ?? '', /script-src 'self'/);
+  const html = await home.text();
+  assert.doesNotMatch(html, /<script>|style=/, 'sem script nem estilo inline');
+  assert.equal((await fetch(`${app.base}/app.js`)).status, 200);
+  assert.equal((await fetch(`${app.base}/vendor/qrcode.mjs`)).status, 200);
+  for (const evil of ['/..%2f..%2fpackage.json', '/%2e%2e/%2e%2e/.env', '/../src/config.ts', '/vendor/../../package.json']) {
+    const res = await fetch(`${app.base}${evil}`);
+    assert.notEqual(res.status, 200, evil);
+  }
+});
+
 test('D11: criação anônima é limitada por cliente (429 + Retry-After)', async () => {
   const limited = await startApp(db);
   try {

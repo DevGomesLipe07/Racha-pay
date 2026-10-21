@@ -49,6 +49,10 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f scripts/db-init.sql
       - run: npm run test:integration
+      - name: E2E (Chromium)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
 
   docker:
     runs-on: ubuntu-latest

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <meta name="description" content="Divida a conta sem planilha: cada um vê e paga só a própria parte." />
+    <title>RachaPay</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#/">Racha<span>Pay</span></a>
+      <span class="tagline">Pague a sua conta e de mais ninguém.</span>
+    </header>
+    <div id="sandbox-banner" class="banner" hidden>Ambiente de teste: pagamentos "sandbox" não movimentam dinheiro.</div>
+    <main id="app" aria-live="polite">
+      <p class="muted">Carregando…</p>
+    </main>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <noscript><p class="card">O RachaPay precisa de JavaScript ligado.</p></noscript>
+  </body>
+</html>

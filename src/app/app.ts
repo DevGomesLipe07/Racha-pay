@@ -1,11 +1,15 @@
-// Montagem da aplicação: rotas + servidor HTTP. Sem efeitos colaterais na importação (testável).
+// Montagem da aplicação: rotas + servidor HTTP + Web/PWA estática. Sem efeitos colaterais na importação.
 
 import type { Server } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { createHttpServer } from '../infra/http/server.ts';
 import { Router } from '../infra/http/router.ts';
+import { createStaticHandler } from '../infra/http/static.ts';
 import type { AppDeps } from './deps.ts';
 import { registerBillRoutes } from './routes/bills.ts';
 import { registerPaymentRoutes } from './routes/payments.ts';
+
+export const PUBLIC_DIR = fileURLToPath(new URL('../../public/', import.meta.url));
 
 export function buildRouter(deps: AppDeps): Router {
   const router = new Router();
@@ -30,10 +34,12 @@ export function buildRouter(deps: AppDeps): Router {
 }
 
 export function buildServer(deps: AppDeps): Server {
+  const https = deps.config.PUBLIC_BASE_URL.startsWith('https://');
   return createHttpServer({
     router: buildRouter(deps),
     logger: deps.logger,
-    https: deps.config.PUBLIC_BASE_URL.startsWith('https://'),
+    https,
     trustProxy: deps.config.TRUST_PROXY,
+    staticHandler: createStaticHandler(PUBLIC_DIR, { https }),
   });
 }

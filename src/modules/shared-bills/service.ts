@@ -123,6 +123,15 @@ export async function createBill(client: PoolClient, ctx: ServiceContext, billId
   return tokens;
 }
 
+/** Emite um novo link de convidado (o token só existe em hash; o antigo continua válido). */
+export async function issueShareToken(client: PoolClient, ctx: ServiceContext, billId: string): Promise<string> {
+  const bill = await requireBill(client, billId);
+  requireNotTerminal(bill);
+  const share = newToken('share');
+  await client.query("INSERT INTO bill_tokens (token_hash, tenant_id, bill_id, kind) VALUES ($1, $2, $3, 'SHARE')", [share.hash, ctx.tenantId, billId]);
+  return share.token;
+}
+
 // ---------------------------------------------------------------------------
 // Edição (rascunho)
 
