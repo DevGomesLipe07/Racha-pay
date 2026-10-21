@@ -219,6 +219,28 @@ test('Web/PWA: serve o app com CSP estrita e não sai da pasta public', async ()
   }
 });
 
+test('D11 com várias instâncias: o limite no PostgreSQL vale para o conjunto, não por instância', async () => {
+  const a = await startApp(db, { RATE_LIMIT_STORE: 'postgres' });
+  const b = await startApp(db, { RATE_LIMIT_STORE: 'postgres' });
+  try {
+    for (const x of [a, b]) x.clock.set('2026-12-01T10:00:05.000Z'); // janela nova, só deste teste
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      const target = i % 2 === 0 ? a : b;
+      statuses.push((await api(target, 'POST', '/v1/bills', { body: { title: `multi${i}`, organizerName: 'A' } })).status);
+    }
+    assert.deepEqual(statuses.slice(0, 10), Array(10).fill(201));
+    assert.equal(statuses[10], 429, 'a 11ª criação estoura somando as duas instâncias');
+    const stored = await db.app.query("SELECT client_key FROM rate_limit_hits WHERE bucket = 'anon-bill-create' LIMIT 1");
+    assert.notEqual(stored.rows[0].client_key, '127.0.0.1', 'o IP não é armazenado');
+    for (const x of [a, b]) x.clock.set('2026-12-01T10:01:05.000Z');
+    assert.equal((await api(a, 'POST', '/v1/bills', { body: { title: 'depois', organizerName: 'A' } })).status, 201);
+  } finally {
+    await a.close();
+    await b.close();
+  }
+});
+
 test('/metrics: só com token de administrador; rótulos usam o padrão da rota, nunca ids', async () => {
   const b = await newPersonalBill();
   await api(app, 'GET', `/v1/bills/${b.id}`, { as: b.org });

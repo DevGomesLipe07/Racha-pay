@@ -1,12 +1,11 @@
 // Entrada: configuração → migrations (se MIGRATION_DATABASE_URL) → checagem do papel → servidor.
 
-import { buildServer, createAIProvider } from './app/app.ts';
+import { buildServer, createAIProvider, createRateLimiter } from './app/app.ts';
 import { ConfigError, loadConfig } from './config.ts';
 import { systemClock } from './infra/clock.ts';
 import { migrate } from './infra/db/migrate.ts';
 import { createPool } from './infra/db/pool.ts';
 import { inspectRole, roleProblems } from './infra/db/role-check.ts';
-import { RateLimiter } from './infra/http/rate-limit.ts';
 import { createLogger } from './infra/log.ts';
 import { startWorker } from './app/worker.ts';
 import { createProviderRegistry } from './modules/payments/providers.ts';
@@ -42,7 +41,7 @@ async function main(): Promise<void> {
   const providers = createProviderRegistry({ sandboxEnabled: config.SANDBOX_ENABLED, sandboxSecret: config.SANDBOX_WEBHOOK_SECRET });
   const ai = createAIProvider(config);
   const metrics = new MetricsRegistry();
-  const server = buildServer({ pool, config, clock: systemClock, logger, rateLimiter: new RateLimiter(), providers, ai, metrics });
+  const server = buildServer({ pool, config, clock: systemClock, logger, rateLimiter: createRateLimiter(config, pool, systemClock), providers, ai, metrics });
   server.listen(config.PORT, () => logger.info('listening', { port: config.PORT, env: config.NODE_ENV, sandbox: config.SANDBOX_ENABLED }));
   const stopWorker = startWorker({
     pool,

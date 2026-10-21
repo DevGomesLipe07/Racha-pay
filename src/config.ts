@@ -27,6 +27,8 @@ const schema = z.object({
   SANDBOX_ENABLED: bool.default(true),
   SANDBOX_WEBHOOK_SECRET: z.string().min(16, 'SANDBOX_WEBHOOK_SECRET deve ter pelo menos 16 caracteres'),
   TRUST_PROXY: bool.default(false),
+  /** postgres = limite compartilhado entre instâncias (padrão); memory = por instância. */
+  RATE_LIMIT_STORE: z.enum(['postgres', 'memory']).default('postgres'),
   AI_PROVIDER: z.enum(['none', 'anthropic']).default('none'),
   ANTHROPIC_API_KEY: z.string().optional(),
   AI_MODEL: z.string().default('claude-sonnet-5-5'),

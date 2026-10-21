@@ -50,6 +50,8 @@ export async function anonymizeOnRequest(client: PoolClient, billId: string, now
 export async function runRetention(pool: Pool, clock: Clock, logger: Logger, limitPerTenant = 500): Promise<{ anonymized: number; purgedKeys: number }> {
   const now = clock.now();
   const { rows: tenants } = await withoutScope(pool, (c) => c.query<{ tenant_id: string }>('SELECT * FROM rp_all_tenants()'));
+  // Contadores de rate limit de janelas que já passaram não servem para nada.
+  await pool.query('DELETE FROM rate_limit_hits WHERE window_start < $1', [new Date(now.getTime() - 2 * 3_600_000)]);
   let anonymized = 0;
   let purgedKeys = 0;
   for (const { tenant_id: tenantId } of tenants) {

@@ -21,6 +21,8 @@ export interface ServerOptions {
   /** Arquivos estáticos (PWA); chamado para GET fora de /v1, /health e /ready. */
   staticHandler?: (path: string, res: ServerResponse) => Promise<boolean>;
   metrics?: MetricsRegistry;
+  /** Sal do HMAC da chave de cliente (igual em todas as instâncias). */
+  clientKeySalt: string;
 }
 
 export const SECURITY_HEADERS: Record<string, string> = {
@@ -140,7 +142,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
       headers,
       body,
       rawBody,
-      clientKey: clientKeyFromIp(clientIp(req, opts.trustProxy)),
+      clientKey: clientKeyFromIp(clientIp(req, opts.trustProxy), opts.clientKeySalt),
       correlationId,
     };
     const response = await matched.route.handler(request);

@@ -88,7 +88,7 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
       const limits = await withScope(pool, { kind: 'tenant', tenantId }, (c) =>
         resolveKnowledge(c, 'RATE_LIMIT.ANON_BILL_CREATE', { tenantId }, clock.now()),
       );
-      const hit = rateLimiter.hit('anon-bill-create', req.clientKey, limits.content);
+      const hit = await rateLimiter.hit('anon-bill-create', req.clientKey, limits.content);
       if (!hit.allowed) throw new AppError(429, 'RATE_LIMITED', 'muitas contas criadas; tente daqui a pouco', { retryAfterSeconds: hit.retryAfterSeconds });
     } else if (principal.kind === 'apiKey') {
       tenantId = principal.tenantId;

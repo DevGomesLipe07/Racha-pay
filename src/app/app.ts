@@ -7,6 +7,14 @@ import { fileURLToPath } from 'node:url';
 import { createHttpServer } from '../infra/http/server.ts';
 import { Router } from '../infra/http/router.ts';
 import { createStaticHandler } from '../infra/http/static.ts';
+import { MemoryRateLimiter, PostgresRateLimiter, rateLimitSalt, type RateLimiter } from '../infra/http/rate-limit.ts';
+import type { Pool } from '../infra/db/pool.ts';
+import type { Clock } from '../infra/clock.ts';
+
+/** Rate limit conforme a configuração: PostgreSQL (compartilhado) ou memória (por instância). */
+export function createRateLimiter(config: Config, pool: Pool, clock: Clock): RateLimiter {
+  return config.RATE_LIMIT_STORE === 'memory' ? new MemoryRateLimiter(() => clock.now().getTime()) : new PostgresRateLimiter(pool, () => clock.now().getTime());
+}
 import type { AppDeps } from './deps.ts';
 import { registerBillRoutes } from './routes/bills.ts';
 import { registerPaymentRoutes } from './routes/payments.ts';
@@ -78,5 +86,6 @@ export function buildServer(deps: AppDeps): Server {
     trustProxy: deps.config.TRUST_PROXY,
     staticHandler: createStaticHandler(PUBLIC_DIR, { https }),
     metrics: deps.metrics,
+    clientKeySalt: rateLimitSalt(deps.config.APP_ENCRYPTION_KEY),
   });
 }

@@ -1,9 +1,8 @@
 import type { AddressInfo } from 'node:net';
-import { buildServer, createAIProvider } from '../../src/app/app.ts';
+import { buildServer, createAIProvider, createRateLimiter } from '../../src/app/app.ts';
 import { DEV_SECRETS, loadConfig } from '../../src/config.ts';
 import { manualClock } from '../../src/infra/clock.ts';
 import { newToken } from '../../src/infra/crypto/hash.ts';
-import { RateLimiter } from '../../src/infra/http/rate-limit.ts';
 import { silentLogger } from '../../src/infra/log.ts';
 import { createProviderRegistry, SandboxProvider } from '../../src/modules/payments/providers.ts';
 import { expireDuePayments } from '../../src/app/worker.ts';
@@ -25,10 +24,11 @@ export interface TestApp {
 }
 
 export async function startApp(db: TestDb, env: Record<string, string> = {}): Promise<TestApp> {
-  const config = loadConfig({ DATABASE_URL: TEST_DATABASE_URL, ...DEV_SECRETS, NODE_ENV: 'test', ...env });
+  // Testes usam o limitador em memória (cada app isolado); o PostgreSQL tem teste próprio (bills-flow).
+  const config = loadConfig({ DATABASE_URL: TEST_DATABASE_URL, ...DEV_SECRETS, NODE_ENV: 'test', RATE_LIMIT_STORE: 'memory', ...env });
   const clock = manualClock('2026-10-21T12:00:00.000Z');
   const providers = createProviderRegistry({ sandboxEnabled: config.SANDBOX_ENABLED, sandboxSecret: config.SANDBOX_WEBHOOK_SECRET });
-  const server = buildServer({ pool: db.app, config, clock, logger: silentLogger, rateLimiter: new RateLimiter(() => clock.now().getTime()), providers, ai: createAIProvider(config), metrics: new MetricsRegistry() });
+  const server = buildServer({ pool: db.app, config, clock, logger: silentLogger, rateLimiter: createRateLimiter(config, db.app, clock), providers, ai: createAIProvider(config), metrics: new MetricsRegistry() });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
   return {
