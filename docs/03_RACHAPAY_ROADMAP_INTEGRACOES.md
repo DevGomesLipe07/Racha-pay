@@ -1,6 +1,6 @@
 # 03 — API, integrações e roadmap
 
-> **Estado em 21/10/2026:** as 44 rotas especificadas estão implementadas e cobertas por teste de integração, mais uma rota nova (`share-links`, D20). O que continua bloqueado depende de terceiros: PSP real e adapter nativo do NexFlow. Detalhe em `04`.
+> **Estado em 21/10/2026:** as 44 rotas especificadas estão implementadas e cobertas por teste de integração, mais as rotas novas `share-links` (D20), `GET /v1/bills`, `GET /v1/reports/daily`, `anonymize` (D21) e `/metrics`. O que continua bloqueado depende de terceiros: PSP real e adapter nativo do NexFlow. Detalhe em `04`.
 
 ## Autenticação
 
@@ -19,7 +19,11 @@ Escopos de chave usados pela Policy Engine: `bills:read`, `bills:write`, `paymen
 
 ```
 GET  /health  /ready  /v1/config
-POST /v1/bills                                criar (anônimo = Pessoal; chave = tenant)
+GET  /metrics                                 Prometheus (Bearer ADMIN_TOKEN)
+POST /v1/bills                                criar (anônimo = Pessoal; chave = tenant; establishmentId opcional)
+GET  /v1/bills?open=&state=&establishmentId=  lista do tenant (chave de API; painel Business)
+POST /v1/bills/{id}/anonymize                 LGPD: titular pede anonimização (humano; D21)
+GET  /v1/reports/daily?date=YYYY-MM-DD        conciliação do dia por estabelecimento (metrics:read)
 GET  /v1/bills/{id}         PATCH /v1/bills/{id}         POST /v1/bills/{id}/cancel
 POST /v1/bills/{id}/share-links               novo link de convidado (D20)
 POST /v1/bills/{id}/participants      PATCH|DELETE /v1/bills/{id}/participants/{pid}
@@ -40,7 +44,9 @@ GET  /v1/cbr/cases   GET /v1/cbr/cases/{id}/similar   POST /v1/cbr/cases/{id}/re
 GET  /v1/metrics     GET /v1/skills
 ```
 
-A Web/PWA é servida em `/` (arquivos de `public/`, CSP estrita, sem build).
+A Web/PWA é servida em `/` (arquivos de `public/`, CSP estrita, sem build). O **painel do estabelecimento** fica em `/#/b`: login com chave de operador (`rpk_…`, de preferência `actor-type HUMAN` para poder confirmar pagamentos no caixa), guardada só na aba (sessionStorage).
+
+Casos CBR do tenant Pessoal (que não tem chave de API): o administrador da plataforma usa `GET /v1/cbr/cases?tenantId=…` e `POST /v1/cbr/cases/{id}/resolve?tenantId=…`.
 
 ### Pagamentos
 
@@ -123,5 +129,5 @@ Eventos: `bill.created, split.confirmed, payment.created, payment.confirmed, pay
 | E2 Web/PWA + compartilhamento | IMPLEMENTADO — organizador e convidado, QR local, WhatsApp, selo, E2E em Chromium |
 | E3 Ledger + conciliação | IMPLEMENTADO — cadeia de hash, imutável no banco, reconstrução |
 | E4 Pagamento piloto | manual + sandbox IMPLEMENTADO; PSP real BLOQUEADO (parceiro) |
-| E5 Business + NexFlow | API Business, estabelecimentos, ERP canônico e webhooks de saída IMPLEMENTADO; **painel web Business** PENDENTE; adapter NexFlow BLOQUEADO (decisão de domínio) |
+| E5 Business + NexFlow | API Business, estabelecimentos, ERP canônico, webhooks de saída e **painel web Business** IMPLEMENTADO; adapter NexFlow BLOQUEADO (decisão de domínio) |
 | E6–E11 | pendentes, conforme Go/No-Go do Guia Mestre §35 |

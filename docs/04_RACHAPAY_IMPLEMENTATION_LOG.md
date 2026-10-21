@@ -4,6 +4,36 @@ Registra só o que foi **efetivamente feito e provado**. Status permitidos: IMPL
 
 ---
 
+## Ciclo 2 — 21/10/2026 — publicação e pendências de maior valor
+
+**Objetivo:** fazer o que antes estava "para o TI" e fechar as maiores pendências, na ordem de impacto (pedido do proprietário: "faça tudo o que você pode, priorizando as maiores pendências").
+
+| Fatia | Entrega | Prova |
+|---|---|---|
+| Publicação | push para `DevGomesLipe07/Racha-pay` (público, como o proprietário criou) | CI verde em todos os pushes: unit (Node 22.18 e 24), integração + E2E com PostgreSQL 16, **build Docker + `docker compose up` + `/ready`** (antes PARCIAL) |
+| Painel web Business | `#/b`: login de operador, mesas abertas, abrir mesa + QR, gestão da conta (mesma tela do organizador), confirmação no caixa, casos, entregas de webhook, conciliação do dia; API `GET /v1/bills`, `GET /v1/reports/daily`, `establishmentId` na criação | integração (lista, filtros, isolamento, relatório) + E2E Chromium do painel inteiro |
+| Regra por estabelecimento | resolução da Expert Library passa a considerar estabelecimento e ERP da conta | integração: serviço de 13% só nas mesas do estabelecimento com a regra |
+| LGPD (D21) | retenção/anonimização horária por tenant, pedido do titular, links revogados, idempotência vencida apagada, botão na interface | integração: ledger idêntico e verificável depois de anonimizar; prazos; recusas |
+| Observabilidade | `/metrics` Prometheus (requisições, latência, worker, pool), protegido por `ADMIN_TOKEN`, sem ids nos rótulos | unidade + integração |
+| Backup (D22) | papel `rachapay_backup`; `npm run backup` / `backup:verify` (restaura num banco descartável e compara tabelas, cabeças e cadeias do ledger) | executado aqui e **no CI**; reprova dump truncado e origem alterada; sem senha em argumento ou mensagem de erro |
+| Rate limit (D11) | compartilhado no PostgreSQL entre instâncias; sal derivado da `APP_ENCRYPTION_KEY` | integração com duas instâncias somando o limite; IP não armazenado |
+| CBR do tenant Pessoal | administrador da plataforma lista e resolve com `tenantId`, auditado | integração |
+
+Migrations novas: `0007_retention.sql`, `0008_rate_limit.sql`.
+
+```
+npm run typecheck   → sem erros
+npm run test:unit   → 84 testes, 84 pass
+npm run test:integration → 58 testes, 58 pass, 0 skipped
+npm run test:e2e    → 2 testes, 2 pass (PWA pessoal + painel Business)
+npm run backup + backup:verify → ok (25 tabelas, 7–8 migrations, cadeias íntegras); negativos reprovados
+GitHub Actions      → success em todos os jobs (unit ×2, integration+E2E+backup, docker)
+```
+
+Falhas encontradas e corrigidas: (1) a tela da mesa não tinha as abas do painel (achado pelo E2E); (2) `pg_restore` com senha na linha de comando e na mensagem de erro — senha agora só no ambiente do processo filho; (3) `pg_restore` recusa `--dbname` depois do arquivo; (4) propriedade declarada no construtor barrada pelo `erasableSyntaxOnly` (a proteção funcionou).
+
+---
+
 ## Ciclo 1 — 21/10/2026 — monólito completo do escopo do Ciclo 1 (fatias S1–S10)
 
 **Objetivo:** construir de verdade o escopo alvo do Ciclo 1 — do domínio financeiro à interface —, provado por testes contra PostgreSQL real e navegador real, na ordem decidida pelo proprietário (núcleo primeiro; "sempre siga com as melhores decisões").
@@ -122,18 +152,19 @@ O que os testes provam (resumo):
 - Policy Engine com auditoria; IA barrada em toda ação financeira crítica; ações humanas exigem chave `HUMAN`.
 - Expert Library com governança completa e CBR com aprendizado controlado.
 - Webhooks de saída (outbox, assinatura, D17, SSRF) e ERP Gateway canônico.
-- Web/PWA (organizador e convidado).
+- Web/PWA (organizador e convidado) e **painel web Business** (`#/b`).
 - IA como apoio: leitura de cupom por texto (determinística), explicação da conciliação, manifesto de skills; IA desligada por padrão.
-- Métricas North Star.
-- Operação: config validada (produção recusa segredos de dev, http e banco sem SSL), `/health`, `/ready`, `npm run migrate`, `npm run tenant:create`, logs JSON sem corpo/query/token, worker interno.
+- Métricas North Star e conciliação do dia por estabelecimento.
+- LGPD: retenção e anonimização (D21), pedido do titular.
+- Operação: config validada (produção recusa segredos de dev, http e banco sem SSL), `/health`, `/ready`, `/metrics` (Prometheus), `npm run migrate`, `npm run tenant:create`, backup com restore verificado (D22), rate limit compartilhado entre instâncias, logs JSON sem corpo/query/token, worker interno.
+- Publicação: código no GitHub; CI verde (unit em Node 22.18 e 24, integração, 2 E2E, backup verificado, build Docker + compose + `/ready`).
 
 ## PARCIAL
 
 - **Leitura de cupom por foto (IA)**: adapter pronto e testado contra servidor falso; **não testado contra a API real da Anthropic** (falta `ANTHROPIC_API_KEY` neste ambiente). Modelo padrão `claude-sonnet-5-5`.
-- **Dockerfile / docker-compose / jobs do CI**: escritos, mas **não executados** — a máquina não tem Docker e ainda não houve push para o GitHub rodar o CI.
-- **Rate limit**: em memória, por instância. Com várias instâncias, mover para PostgreSQL/Redis.
 - **Escopos compartilhados da Expert Library**: o banco exige a marca de administrador na sessão, mas quem põe a marca é a aplicação (depois de validar o `ADMIN_TOKEN`) — defesa em profundidade menor que a do resto do RLS.
-- **Casos CBR do tenant Pessoal**: são criados e entram nas métricas, mas não há tela nem rota para resolvê-los (a API de CBR é por tenant; o Pessoal não tem chave de API).
+- **Painel do administrador da plataforma**: governança da Expert Library e casos do tenant Pessoal funcionam pela API (`ADMIN_TOKEN`), sem tela.
+- **Retenção (D21)** passa por todos os tenants a cada hora — adequado para centenas de tenants; para dezenas de milhares, paginar por tenant.
 
 ## BLOQUEADO
 
@@ -144,24 +175,23 @@ O que os testes provam (resumo):
 
 ## PENDENTE
 
-1. **Painel web Business** (estabelecimentos, mesas abertas, QR por mesa, baixa parcial, divergências, entregas de webhook) — a API inteira já existe.
-2. **Rotina LGPD** de anonimização/retenção.
-3. **Observabilidade externa** (métricas Prometheus/OpenTelemetry) e backup/restore testado no provedor escolhido.
-4. **Resolução de casos do tenant Pessoal** pelo administrador da plataforma.
-5. Contas de usuário opcionais e notificações (WhatsApp/push), se o piloto pedir.
-6. ML, RAG, MCP e agentes: só com dados e necessidade comprovada.
+1. **Ambiente de produção**: provedor de hospedagem e PostgreSQL gerenciado, domínio com https, segredos — exige conta e decisão do proprietário (custo).
+2. Painel web do administrador da plataforma (hoje via API).
+3. Contas de usuário opcionais e notificações (WhatsApp/push), se o piloto pedir.
+4. ML, RAG, MCP e agentes: só com dados e necessidade comprovada.
 
 ## PARA O TI PUBLICAR
 
-1. **Revisar e publicar**: o repositório local tem os commits do ciclo; nenhum push foi feito. `git push -u origin main` publica e dispara o CI (unit em Node 22.18 e 24, integração com PostgreSQL 16, E2E, build Docker + `/ready`).
-2. **Banco**: PostgreSQL 16+. Como administrador: `psql -f scripts/db-init.sql` (troque as senhas). `DATABASE_URL` com `rachapay_app`; `MIGRATION_DATABASE_URL` com `rachapay_owner`.
-3. **Ambiente**: `cp .env.example .env`; em produção defina `NODE_ENV=production`, `PUBLIC_BASE_URL=https://…`, `DATABASE_URL=…?sslmode=require`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `ADMIN_TOKEN` (`openssl rand -hex 32`), `SANDBOX_WEBHOOK_SECRET`, `TRUST_PROXY=true` atrás de load balancer. IA opcional: `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`.
-4. **Migrations**: automáticas na subida quando `MIGRATION_DATABASE_URL` existe, ou `npm run migrate` no pipeline.
-5. **Testes**: `TEST_DATABASE_URL` e `TEST_MIGRATION_DATABASE_URL` apontando para banco descartável → `npm run check`; E2E: `npx playwright install chromium && npm run test:e2e`. **Nunca** contra produção (o teste recria o schema).
-6. **Execução**: `npm start` (Node ≥ 22.18) ou `docker compose up --build`. Saúde: `/health`, `/ready`.
-7. **Primeiro cliente Business**: `MIGRATION_DATABASE_URL=… npm run tenant:create -- --name "Restaurante X"` — a chave aparece uma vez. Para confirmar pagamentos manuais no caixa, crie uma chave `--actor-type HUMAN`.
-8. **Homologar a IA** (se for usar foto de cupom): uma chamada real com `ANTHROPIC_API_KEY` e um cupom de teste.
+O que dependia só de código já foi feito e provado no CI. O que sobra exige conta, dinheiro ou decisão:
+
+1. **Escolher onde hospedar** (qualquer plataforma com Node 22.18+ ou contêiner: Render, Railway, Fly.io, Cloud Run, ECS) e um **PostgreSQL 16+ gerenciado** (Neon, Supabase, RDS).
+2. **Banco**: como administrador, `psql -f scripts/db-init.sql` **trocando as três senhas** (`rachapay_owner`, `rachapay_app`, `rachapay_backup`). `DATABASE_URL` com `rachapay_app`; `MIGRATION_DATABASE_URL` com `rachapay_owner`; `BACKUP_DATABASE_URL` com `rachapay_backup` (só na rotina de backup). Se o provedor não deixar criar papel com BYPASSRLS, use o snapshot do próprio provedor e rode `backup:verify` num restore dele.
+3. **Segredos** (no cofre da plataforma): `NODE_ENV=production`, `PUBLIC_BASE_URL=https://…`, `DATABASE_URL=…?sslmode=require`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `ADMIN_TOKEN` (`openssl rand -hex 32`), `SANDBOX_WEBHOOK_SECRET`, `TRUST_PROXY=true` atrás de load balancer. O servidor recusa subir com valores de desenvolvimento.
+4. **Deploy**: imagem do `Dockerfile` (já validada no CI) ou `npm start`. Saúde: `/health`, `/ready`; métricas: `/metrics` com `Authorization: Bearer <ADMIN_TOKEN>`.
+5. **Backup diário**: `npm run backup -- --out …` agendado + `npm run backup:verify` semanal num servidor de restauração.
+6. **Primeiro cliente Business**: `MIGRATION_DATABASE_URL=… npm run tenant:create -- --name "Restaurante X" --actor-type HUMAN` — a chave aparece uma vez; o operador entra em `https://…/#/b`.
+7. **Homologar a IA** (só se for usar foto de cupom): `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` e um cupom de teste.
 
 ## PRÓXIMO CICLO
 
-**Piloto com 5–10 estabelecimentos** usando o fluxo atual (manual + organizador) para responder à pergunta do Guia: *RachaPay é mais fácil do que "eu pago e vocês me fazem Pix"?* — com o **painel web Business** como a única peça de código que falta para o piloto Business. Em paralelo, fora do código: escolher o PSP (Pix + split de recebíveis) para destravar o E4 real, e decidir o encaixe do NexFlow.
+**Piloto com 5–10 estabelecimentos** (fluxo manual + organizador e painel Business, que já existem) para responder à pergunta do Guia: *RachaPay é mais fácil do que "eu pago e vocês me fazem Pix"?* Fora do código: escolher hospedagem e PSP (Pix + split de recebíveis) e decidir o encaixe do NexFlow.

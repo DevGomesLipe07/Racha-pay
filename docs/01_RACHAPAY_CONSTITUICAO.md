@@ -54,7 +54,8 @@ Resumo dos princípios do Guia Mestre e da Constituição de Inteligência, com 
 
 - Participante é só um nome escolhido pelo usuário; sem CPF, telefone ou e-mail.
 - IP não é armazenado. Métricas agregadas, sem dado pessoal.
-- Pendente: rotina de anonimização/retenção (ver log).
+- **Garantido:** rotina de retenção e anonimização (D21) — nomes e textos livres viram rótulos neutros no prazo da regra `RETENTION.PERSONAL_DATA`, links são revogados, o ledger (sem nomes) continua íntegro; o titular pode pedir antes.
+- Backup com restore verificado (D22): papel de backup só leitura, uso exclusivo da rotina.
 - **Para decisão jurídica** (registrado, regra não alterada):
   - o nome do participante, mesmo livre, continua sendo dado pessoal quando identifica alguém;
   - enviar foto de cupom a um LLM externo é tratamento por terceiro e pode ser transferência internacional — exige base legal e menção na política de privacidade.

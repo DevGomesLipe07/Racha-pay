@@ -6,7 +6,7 @@ Plataforma de divisão, cobrança, pagamento e conciliação de despesas compart
 
 Monólito modular em TypeScript sobre Node.js 22, PostgreSQL como fonte da verdade, multi-tenant com RLS, API-first, ledger encadeado por hash, Expert Library versionada, memória de casos (CBR) e IA como apoio substituível — nunca como autoridade financeira.
 
-> **Estado em 21/10/2026:** o **escopo do Ciclo 1 está implementado e testado**, com 131 testes: 82 unitários, 48 de integração contra PostgreSQL real e 1 E2E no Chromium. Isso cobre a API (44 rotas), a Web/PWA, os pagamentos manual e sandbox, o ledger verificável, os webhooks, o ERP canônico, a Expert Library, o CBR e a IA como apoio. Bloqueados por dependência externa: pagamento real via PSP e adapter nativo do NexFlow. Ainda pendente: o painel web Business. Detalhes em `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md`.
+> **Estado em 21/10/2026:** implementado e testado, com 144 testes (84 unitários, 58 de integração contra PostgreSQL real e 2 E2E no Chromium) e CI verde no GitHub, incluindo o build Docker e o backup com restore verificado. Isso cobre a API, a Web/PWA, o painel do estabelecimento, os pagamentos manual e sandbox, o ledger verificável, os webhooks, o ERP canônico, a Expert Library, o CBR, a IA como apoio, a LGPD, as métricas Prometheus e o backup. Bloqueados por dependência externa: pagamento real via PSP e adapter nativo do NexFlow. Detalhes em `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md`.
 
 ---
 
@@ -30,11 +30,13 @@ npm run check            # typecheck + unitários + integração
 node --env-file=.env src/main.ts      # http://localhost:3000/health
 ```
 
-Com Docker: `docker compose up --build` (escrito, ainda não executado — ver log).
+Com Docker: `docker compose up --build` (validado no CI).
+
+Backup: `BACKUP_DATABASE_URL=… npm run backup -- --out rachapay.dump` e `RESTORE_ADMIN_URL=… npm run backup:verify -- --dump rachapay.dump`.
 
 E2E da interface (Chromium): `npx playwright install chromium && npm run test:e2e`.
 
-**Papéis do banco (D16):** `DATABASE_URL` usa `rachapay_app` (só DML); `MIGRATION_DATABASE_URL` usa `rachapay_owner` (dono do schema, só migrations). Em produção o servidor recusa subir se o papel da aplicação for superuser, BYPASSRLS ou dono das tabelas.
+**Papéis do banco (D16, D22):** `DATABASE_URL` usa `rachapay_app` (só DML); `MIGRATION_DATABASE_URL` usa `rachapay_owner` (dono do schema, só migrations); `BACKUP_DATABASE_URL` usa `rachapay_backup` (só leitura, só na rotina de backup). Em produção o servidor recusa subir se o papel da aplicação for superuser, BYPASSRLS ou dono das tabelas.
 
 **Testes de integração:** `TEST_DATABASE_URL` (padrão `postgresql://rachapay_app:rachapay_dev@localhost:5432/rachapay_test`) e `TEST_MIGRATION_DATABASE_URL` (padrão com `rachapay_owner`). Eles **apagam e recriam o schema** — nunca aponte para produção.
 
@@ -61,7 +63,8 @@ Primeiro cliente Business: `MIGRATION_DATABASE_URL=… npm run tenant:create -- 
 | Expert Library com quatro olhos e CBR com aprendizado controlado | ✅ |
 | Leitura de cupom: texto (sem IA) ✅ · foto (IA opcional) — testada só contra servidor falso | ✅ / ⚠️ |
 | Métricas North Star | ✅ |
-| Painel web Business | ⏳ (a API existe) |
+| Painel web do estabelecimento (`/#/b`): mesas, QR, caixa, casos, webhooks, conciliação do dia | ✅ |
+| LGPD: retenção e anonimização; backup com restore verificado; métricas Prometheus | ✅ |
 | Pagamento real via PSP | ⛔ bloqueado: falta contrato e credenciais de um PSP |
 | Adapter nativo NexFlow | ⛔ bloqueado: decisão de encaixe de domínio |
 
@@ -87,10 +90,11 @@ src/
     ai/                   AIProvider + skills (o SDK da IA só existe aqui)
     integrations/erp/     ERP Gateway (contrato canônico)
     integrations/webhooks/ outbox, entrega assinada, SSRF
-    analytics/            North Star
+    analytics/            North Star e conciliação do dia
+    privacy/              retenção e anonimização (LGPD)
 public/                   Web/PWA (sem build, CSP estrita)
 migrations/               SQL versionado (checksum protege contra edição)
-scripts/                  db-init.sql, migrate, create-tenant
+scripts/                  db-init.sql, migrate, create-tenant, backup, verify-backup
 tests/unit|integration|e2e
 docs/                     constituição, regras, integrações, log de implementação
 ```
@@ -100,7 +104,7 @@ docs/                     constituição, regras, integrações, log de implemen
 Leia nesta ordem — cada um é governado pelos anteriores:
 
 1. `docs/01_RACHAPAY_CONSTITUICAO.md` — princípios inegociáveis e onde são garantidos no código
-2. `docs/02_RACHAPAY_REGRAS_NEGOCIO.md` — regras de divisão, conciliação, estados e decisões D1–D20
+2. `docs/02_RACHAPAY_REGRAS_NEGOCIO.md` — regras de divisão, conciliação, estados e decisões D1–D22
 3. `docs/03_RACHAPAY_ROADMAP_INTEGRACOES.md` — API, contrato ERP canônico, webhooks, PSP, roadmap
 4. `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md` — o que foi feito, provado e o que falta
 
