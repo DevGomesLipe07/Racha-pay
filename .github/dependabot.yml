@@ -1,18 +1,32 @@
 version: 2
+# Política: versão nova só depois de 14 dias publicada (cooldown); major do runtime (imagem Node) e dos
+# tipos do Node fica parada — tem de acompanhar o Node mínimo suportado (engines >= 22.18).
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     open-pull-requests-limit: 5
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
