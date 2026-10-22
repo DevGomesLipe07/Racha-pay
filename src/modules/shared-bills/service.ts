@@ -9,7 +9,8 @@ import type { PoolClient } from '../../infra/db/pool.ts';
 import { provenance, resolveKnowledge, type KnowledgeKey, type ResolvedKnowledge } from '../expert/library.ts';
 import { appendLedger } from '../ledger/ledger-repo.ts';
 import type { LedgerEntryDraft } from '../ledger/chain.ts';
-import { refreshBillState } from '../reconciliation/service.ts';
+import { loadReconciliation, refreshBillState } from '../reconciliation/service.ts';
+import { buildPixBrCode, maskPixKey, normalizePixKey, PixKeyError } from '../payments/pix-brcode.ts';
 import type { ServiceContext } from '../service-context.ts';
 import { computeSplit, type SplitInput, type SplitMode, type SplitResult } from '../split/engine.ts';
 import {
@@ -185,6 +186,67 @@ export async function updateBill(client: PoolClient, ctx: ServiceContext, billId
       WHERE id = $1`,
     [billId, patch.title ?? null, patch.splitMode ?? null, patch.discountCents ?? null, patch.serviceBp ?? null, patch.tipCents ?? null, ctx.now],
   );
+}
+
+// ---------------------------------------------------------------------------
+// Pix do organizador (D23): QR / copia e cola com o valor da parte, sem PSP.
+
+export async function setOrganizerPix(
+  client: PoolClient,
+  ctx: ServiceContext,
+  billId: string,
+  input: { pixKey: string | null; pixCity?: string },
+): Promise<void> {
+  const bill = await requireBill(client, billId);
+  requireNotTerminal(bill);
+  if (bill.collection_model !== 'ORGANIZER_COLLECTS') throw conflict('PIX_NOT_APPLICABLE', 'no estabelecimento o pagamento é no caixa (ou pelo PSP)');
+  let key: { key: string; type: string } | null = null;
+  if (input.pixKey !== null) {
+    try {
+      key = normalizePixKey(input.pixKey);
+    } catch (e) {
+      if (e instanceof PixKeyError) throw unprocessable(e.code, e.message);
+      throw e;
+    }
+  }
+  await client.query('UPDATE bills SET pix_key = $2, pix_key_type = $3, pix_city = $4, updated_at = $5, row_version = row_version + 1 WHERE id = $1', [
+    billId,
+    key?.key ?? null,
+    key?.type ?? null,
+    key ? (input.pixCity?.trim() || null) : null,
+    ctx.now,
+  ]);
+}
+
+export async function pixForParticipant(
+  client: PoolClient,
+  billId: string,
+  participantId: string,
+): Promise<{ payload: string; amountCents: bigint; receiverName: string; keyMasked: string }> {
+  const bill = await requireBill(client, billId, false);
+  requireNotTerminal(bill);
+  if (!bill.pix_key || !bill.pix_key_type) throw notFound('Pix do organizador');
+  const { reconciliation, confirmed } = await loadReconciliation(client, bill);
+  if (!confirmed) throw conflict('SPLIT_NOT_CONFIRMED', 'a divisão ainda não foi confirmada');
+  const share = reconciliation.participants.find((p) => p.participantId === participantId);
+  if (!share) throw notFound('participante');
+  if (share.availableToPayCents === 0n) throw conflict('NOTHING_TO_PAY', 'esta parte não tem saldo a pagar');
+  const { rows } = await client.query<{ name: string; position: number; is_organizer: boolean }>(
+    'SELECT name, position, is_organizer FROM participants WHERE bill_id = $1 AND (id = $2 OR is_organizer) ORDER BY is_organizer DESC',
+    [billId, participantId],
+  );
+  const organizer = rows.find((r) => r.is_organizer);
+  const payer = rows.find((r) => !r.is_organizer) ?? rows[0];
+  const payload = buildPixBrCode({
+    key: bill.pix_key,
+    merchantName: organizer?.name ?? 'RachaPay',
+    city: bill.pix_city ?? 'BRASIL',
+    amountCents: share.availableToPayCents,
+    // Aparece no extrato do organizador: ajuda a reconhecer de quem é o Pix.
+    txid: `RP${billId.replace(/-/g, '').slice(0, 8)}P${(payer?.position ?? 0) + 1}`,
+    description: `RachaPay ${bill.title}`.slice(0, 40),
+  });
+  return { payload, amountCents: share.availableToPayCents, receiverName: organizer?.name ?? 'organizador', keyMasked: maskPixKey(bill.pix_key, bill.pix_key_type) };
 }
 
 export async function addParticipant(client: PoolClient, ctx: ServiceContext, billId: string, name: string): Promise<string> {

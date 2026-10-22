@@ -27,6 +27,9 @@ export interface BillRow {
   row_version: number;
   establishment_id: string | null;
   erp_provider: string | null;
+  pix_key: string | null;
+  pix_key_type: 'CPF' | 'CNPJ' | 'PHONE' | 'EMAIL' | 'EVP' | null;
+  pix_city: string | null;
   created_at: Date;
   updated_at: Date;
 }

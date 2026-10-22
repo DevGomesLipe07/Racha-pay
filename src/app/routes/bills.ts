@@ -194,6 +194,28 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
     }),
   );
 
+  // D23 — chave Pix do organizador (opcional). null remove.
+  router.put(
+    '/v1/bills/:id/pix',
+    onBill('bill.edit', async (client, ctx, req, billId) => {
+      const input = parseBody(z.object({ pixKey: z.string().trim().min(3).max(120).nullable(), pixCity: z.string().trim().max(40).optional() }).strict(), req);
+      await bills.setOrganizerPix(client, ctx, billId, input.pixCity !== undefined ? { pixKey: input.pixKey, pixCity: input.pixCity } : { pixKey: input.pixKey });
+    }),
+  );
+
+  // Pix "copia e cola" da parte de um participante, com o valor que falta pagar (calculado no servidor).
+  router.get(
+    '/v1/bills/:id/participants/:pid/pix',
+    onBill(
+      'bill.read',
+      async (client, _ctx, req, billId) => {
+        const pix = await bills.pixForParticipant(client, billId, param(req, 'pid'));
+        return { pix: { payload: pix.payload, amountCents: centsToJson(pix.amountCents), receiverName: pix.receiverName, keyMasked: pix.keyMasked } };
+      },
+      { respond: 'result' },
+    ),
+  );
+
   // LGPD (D21): o titular pede a anonimização já; o ledger (só ids) continua íntegro.
   router.post(
     '/v1/bills/:id/anonymize',

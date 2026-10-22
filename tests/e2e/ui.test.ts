@@ -62,6 +62,12 @@ test('fluxo completo pela interface: criar → itens → confirmar → convidado
   await org.page.getByTestId('mode').selectOption('BY_ITEM');
   await org.page.waitForFunction(() => (document.querySelector('[data-testid=mode]') as HTMLSelectElement | null)?.value === 'BY_ITEM');
 
+  // D23: Ana cadastra a chave Pix; os convidados recebem o QR com o valor da parte.
+  await org.page.getByTestId('pix-key').fill('ana@exemplo.com');
+  await org.page.getByTestId('pix-city').fill('Campinas');
+  await org.page.getByTestId('pix-save').click();
+  await org.page.getByText(/para a chave an…@exemplo\.com/).waitFor();
+
   await org.page.getByTestId('preview-split').click();
   // 114,00 + 10% de serviço = 125,40
   const confirm = org.page.getByTestId('confirm-split');
@@ -79,6 +85,10 @@ test('fluxo completo pela interface: criar → itens → confirmar → convidado
   await bruno.page.goto(shareUrl);
   await bruno.page.getByTestId('who-Bruno').click();
   assert.match((await bruno.page.getByTestId('my-share').textContent()) ?? '', /46,20/);
+  await bruno.page.getByTestId('pix-payload').waitFor();
+  const brcode = ((await bruno.page.getByTestId('pix-payload').textContent()) ?? '').trim();
+  assert.match(brcode, /^000201.*br\.gov\.bcb\.pix.*540546\.20.*6304[0-9A-F]{4}$/);
+  assert.ok((await bruno.page.getByTestId('guest-pix').locator('svg.qr rect').count()) > 100);
   await bruno.page.getByTestId('pay-manual').click();
   await bruno.page.getByTestId('my-status').getByText(/aguardando confirmação/).waitFor();
 

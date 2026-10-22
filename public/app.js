@@ -160,6 +160,59 @@ function renderOrganizer(api, bill, load, token, opts = {}) {
   return mount(app, opts.back, header, bill.state === 'SETTLED' && seal(), ...confirmedSections(api, bill, refresh, token, opts));
 }
 
+/** D23 — chave Pix do organizador: os convidados recebem QR e "copia e cola" com o valor da parte. */
+function pixCard(api, bill, refresh) {
+  if (bill.collectionModel !== 'ORGANIZER_COLLECTS') return null;
+  if (bill.pix?.configured) {
+    return el(
+      'section',
+      { class: 'card stack', 'data-testid': 'pix-card' },
+      el('h2', {}, 'Receber por Pix'),
+      el('p', { class: 'small' }, `Os convidados recebem o QR com o valor de cada um, para a chave ${bill.pix.keyMasked}.`),
+      actionButton('Remover chave', async () => refresh((await api.put(`/v1/bills/${bill.id}/pix`, { pixKey: null })).bill), { class: 'link danger' }),
+    );
+  }
+  const key = el('input', { 'data-testid': 'pix-key', maxlength: 120, placeholder: 'chave aleatória, e-mail ou telefone' });
+  const city = el('input', { 'data-testid': 'pix-city', maxlength: 40, placeholder: 'sua cidade' });
+  return el(
+    'section',
+    { class: 'card stack', 'data-testid': 'pix-card' },
+    el('h2', {}, 'Receber por Pix (opcional)'),
+    el('p', { class: 'muted small' }, 'Com a sua chave, cada convidado recebe um QR com o valor certo. Prefira chave aleatória ou e-mail a CPF. A chave some quando os dados do racha forem apagados.'),
+    el('div', { class: 'grid2' }, key, city),
+    actionButton(
+      'Salvar chave Pix',
+      async () => {
+        if (!key.value.trim()) throw new Error('informe a chave Pix');
+        refresh((await api.put(`/v1/bills/${bill.id}/pix`, { pixKey: key.value.trim(), pixCity: city.value.trim() || 'BRASIL' })).bill);
+        toast('Chave Pix salva');
+      },
+      { 'data-testid': 'pix-save' },
+    ),
+  );
+}
+
+/** Convidado: QR + copia e cola com o valor que falta (o valor vem da API). */
+function guestPixBox(api, bill, me) {
+  const box = el('div', { class: 'stack', 'data-testid': 'guest-pix' }, el('p', { class: 'muted small' }, 'Gerando o Pix…'));
+  api
+    .get(`/v1/bills/${bill.id}/participants/${me.id}/pix`)
+    .then(({ pix }) =>
+      mount(
+        box,
+        el('p', { class: 'small' }, `Pix de ${brl(pix.amountCents)} para ${pix.receiverName} (chave ${pix.keyMasked}):`),
+        qrSvg(pix.payload, 'QR code Pix com o valor da sua parte'),
+        actionButton('Copiar código Pix', async () => {
+          await navigator.clipboard.writeText(pix.payload);
+          toast('Código Pix copiado: cole no app do seu banco');
+        }, { class: 'full', 'data-testid': 'pix-copy' }),
+        el('p', { class: 'share-link', 'data-testid': 'pix-payload' }, pix.payload),
+      ),
+    )
+    .catch(() => mount(box));
+  return box;
+}
+
 function participantsSection(api, bill, refresh, editable) {
   const name = el('input', { 'data-testid': 'new-participant', maxlength: 60, placeholder: 'Nome' });
   return el(
@@ -354,6 +407,7 @@ function draftSections(api, bill, refresh) {
       ),
     ),
     el('section', { class: 'card stack' }, el('h2', {}, 'Conferir e confirmar'), actionButton('Ver a divisão', doPreview, { class: 'full', 'data-testid': 'preview-split' }), previewBox),
+    pixCard(api, bill, refresh),
   ];
 }
 
@@ -537,6 +591,7 @@ function confirmedSections(api, bill, refresh, token, opts = {}) {
     pendingCard,
     balances,
     shareCard,
+    !opts.business && bill.state !== 'SETTLED' && pixCard(api, bill, refresh),
     refundCard,
     el('section', { class: 'card stack' }, el('h2', {}, 'Itens'), itemsList(api, bill, refresh)),
     bill.state !== 'CANCELLED' && itemForm(api, bill, refresh, 'Pediram mais alguma coisa?'),
@@ -619,6 +674,7 @@ function renderGuest(api, bill, load) {
       { class: 'stack' },
       bill.collectionModel === 'ORGANIZER_COLLECTS' &&
         el('p', { class: 'small' }, `Faça o Pix (ou entregue o dinheiro) para ${organizer?.name ?? 'o organizador'} e avise aqui. A confirmação é dele.`),
+      bill.collectionModel === 'ORGANIZER_COLLECTS' && bill.pix?.configured && guestPixBox(api, bill, me),
       actionButton(
         bill.collectionModel === 'ORGANIZER_COLLECTS' ? `Já paguei ${brl(b.availableToPayCents)} para ${organizer?.name ?? 'o organizador'}` : `Paguei ${brl(b.availableToPayCents)} no caixa`,
         async () => {

@@ -7,6 +7,7 @@ import { loadPayments, loadReconciliation } from '../reconciliation/service.ts';
 import { netPaidCents } from '../payments/state-machine.ts';
 import { loadAggregate, loadAllocations, loadBill, loadSplitVersion, type BillRow } from './repo.ts';
 import { notFound } from '../../app/errors.ts';
+import { maskPixKey, type PixKeyType } from '../payments/pix-brcode.ts';
 
 const c = centsToJson;
 
@@ -40,6 +41,12 @@ async function renderBill(client: PoolClient, bill: BillRow, opts: { viewer: 'or
     externalReference: bill.external_reference,
     rowVersion: bill.row_version,
     viewer: opts.viewer,
+    // Convidado só sabe se há Pix configurado; a chave (mascarada) só aparece para quem administra.
+    pix: bill.pix_key
+      ? opts.viewer === 'guest'
+        ? { configured: true }
+        : { configured: true, type: bill.pix_key_type, keyMasked: maskPixKey(bill.pix_key, bill.pix_key_type as PixKeyType), city: bill.pix_city }
+      : { configured: false },
     split: version
       ? {
           version: version.version,

@@ -25,7 +25,8 @@ export async function anonymizeBill(client: PoolClient, billId: string, now: Dat
   );
   const items = await client.query("UPDATE items SET description = 'Item ' || (position + 1) WHERE bill_id = $1", [billId]);
   await client.query(
-    `UPDATE bills SET title = 'Conta anonimizada', table_label = NULL, anonymized_at = COALESCE(anonymized_at, $2), updated_at = $2
+    `UPDATE bills SET title = 'Conta anonimizada', table_label = NULL, pix_key = NULL, pix_key_type = NULL, pix_city = NULL,
+            anonymized_at = COALESCE(anonymized_at, $2), updated_at = $2
       WHERE id = $1`,
     [billId, now],
   );

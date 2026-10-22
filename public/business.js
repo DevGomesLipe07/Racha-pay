@@ -272,10 +272,12 @@ async function webhooksView(api, deps) {
 }
 
 async function dayView(api, deps) {
-  const date = el('input', { type: 'date', 'data-testid': 'biz-date', value: new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()) });
+  // Sem data, o servidor usa o "hoje" dele (fuso de São Paulo) — o relógio do aparelho não manda no relatório.
+  const date = el('input', { type: 'date', 'data-testid': 'biz-date' });
   const box = el('div', {});
   const load = async () => {
-    const { report } = await api.get(`/v1/reports/daily?date=${date.value}`);
+    const { report } = await api.get(`/v1/reports/daily${date.value ? `?date=${date.value}` : ''}`);
+    date.value = report.date;
     mount(
       box,
       report.establishments.length === 0
