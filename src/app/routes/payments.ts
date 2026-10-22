@@ -19,7 +19,7 @@ import { beginIdempotent, completeIdempotent, idempotencyKeyOf, requestHash } fr
 import { routeKit } from './common.ts';
 import { errorBody } from '../../infra/http/server.ts';
 
-const createSchema = z
+export const paymentCreateSchema = z
   .object({
     billId: uuid,
     participantId: uuid,
@@ -28,12 +28,12 @@ const createSchema = z
   })
   .strict();
 
-const refundSchema = z.discriminatedUnion('kind', [
+export const refundSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('PROVIDER'), billId: uuid, paymentId: uuid, amountCents: cents.optional() }).strict(),
   z.object({ kind: z.literal('MANUAL_RECORD'), billId: uuid, participantId: uuid, amountCents: cents }).strict(),
 ]);
 
-const simulateSchema = z
+export const simulateSchema = z
   .object({
     kind: z.enum(PAYMENT_EVENT_KINDS).default('CONFIRMED'),
     amountCents: z.number().int().positive().optional(),
@@ -46,7 +46,7 @@ export function registerPaymentRoutes(router: Router, deps: AppDeps): void {
   const { principalOf, ctxOf, onBill, runOnBill } = routeKit(deps);
 
   router.post('/v1/payments', async (req) => {
-    const input = parseBody(createSchema, req);
+    const input = parseBody(paymentCreateSchema, req);
     if (input.method === 'SANDBOX' && !providers.sandbox) throw unprocessable('METHOD_NOT_AVAILABLE', 'sandbox desligado neste ambiente');
     const key = idempotencyKeyOf(req.headers);
     const principal = await principalOf(req);

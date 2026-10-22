@@ -22,7 +22,7 @@ import { anonymizeOnRequest } from '../../modules/privacy/retention.ts';
 
 const name60 = z.string().trim().min(1).max(60);
 
-const createSchema = z
+export const billCreateSchema = z
   .object({
     kind: z.enum(BILL_KINDS).default('OTHER'),
     title: z.string().trim().min(1).max(80),
@@ -37,7 +37,7 @@ const createSchema = z
 
 const listStates = ['DRAFT', 'OPEN', 'PARTIALLY_PAID', 'SETTLEMENT_PENDING', 'SETTLED', 'REOPENED', 'CANCELLED'] as const;
 
-const patchSchema = z
+export const billPatchSchema = z
   .object({
     title: z.string().trim().min(1).max(80).optional(),
     splitMode: z.enum(SPLIT_MODES).optional(),
@@ -47,7 +47,7 @@ const patchSchema = z
   })
   .strict();
 
-const participantPatchSchema = z
+export const participantPatchSchema = z
   .object({
     name: name60.optional(),
     percentBp: z.number().int().min(0).max(10_000).nullable().optional(),
@@ -57,7 +57,7 @@ const participantPatchSchema = z
 
 const assigneesSchema = z.array(z.object({ participantId: uuid, weight: z.number().int().min(1).max(1000).optional() }).strict()).max(100);
 
-const itemSchema = z
+export const itemSchema = z
   .object({
     description: z.string().trim().min(1).max(120),
     unitPriceCents: cents,
@@ -77,7 +77,7 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
 
   router.post('/v1/bills', async (req) => {
     const principal = await principalOf(req);
-    const input = parseBody(createSchema, req);
+    const input = parseBody(billCreateSchema, req);
     let tenantId: string;
     let collectionModel = input.collectionModel;
     if (principal.kind === 'anonymous') {
@@ -175,7 +175,7 @@ export function registerBillRoutes(router: Router, deps: AppDeps): void {
   router.patch(
     '/v1/bills/:id',
     onBill('bill.edit', async (client, ctx, req, billId) => {
-      const p = parseBody(patchSchema, req);
+      const p = parseBody(billPatchSchema, req);
       await bills.updateBill(client, ctx, billId, {
         ...(p.title !== undefined ? { title: p.title } : {}),
         ...(p.splitMode !== undefined ? { splitMode: p.splitMode } : {}),

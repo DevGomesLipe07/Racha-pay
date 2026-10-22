@@ -19,7 +19,7 @@ import { routeKit } from './common.ts';
 
 const ZERO_TENANT = '00000000-0000-0000-0000-000000000000';
 
-const proposeSchema = z
+export const knowledgeProposeSchema = z
   .object({
     key: z.string().regex(/^[A-Z][A-Z0-9_]*(\.[A-Z][A-Z0-9_]*)+$/),
     scopeType: z.enum(SCOPE_ORDER),
@@ -98,7 +98,7 @@ export function registerIntelligenceRoutes(router: Router, deps: AppDeps): void 
 
   router.post('/v1/knowledge', async (req) => {
     const body = await governed(req, 'knowledge.propose', async (client, ctx, who) => {
-      const input = parseBody(proposeSchema, req);
+      const input = parseBody(knowledgeProposeSchema, req);
       const k = await proposeKnowledge(client, who, {
         key: input.key,
         scopeType: input.scopeType,

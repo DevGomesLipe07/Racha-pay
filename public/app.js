@@ -2,7 +2,7 @@
 // e painel do estabelecimento (#/b…, em business.js). Nenhuma regra financeira aqui: a API calcula,
 // concilia e decide.
 
-import { createApi, newKey } from './api.js';
+import { createApi, newKey, UUID } from './api.js';
 import { businessView } from './business.js';
 import { adminView } from './admin.js';
 import { brl, KIND_LABEL, MODE_LABEL, parseMoney, parsePercentBp, pct, PAYMENT_LABEL, STATE_LABEL } from './format.js';
@@ -19,8 +19,10 @@ let poller;
 function route() {
   clearInterval(poller);
   const parts = location.hash.replace(/^#\/?/, '').split('/');
-  if (parts[0] === 'o' && parts[1] && parts[2]) return organizerView(parts[1], parts[2]);
-  if (parts[0] === 's' && parts[1] && parts[2]) return guestView(parts[1], parts[2]);
+  // Id e token vindos do link só passam se tiverem o formato esperado (o resto vira tela inicial).
+  const token = (prefix) => typeof parts[2] === 'string' && new RegExp(`^${prefix}_[A-Za-z0-9_-]{43}$`).test(parts[2]);
+  if (parts[0] === 'o' && UUID.test(parts[1] ?? '') && token('rpo')) return organizerView(parts[1], parts[2]);
+  if (parts[0] === 's' && UUID.test(parts[1] ?? '') && token('rps')) return guestView(parts[1], parts[2]);
   if (parts[0] === 'b') return businessView(parts.slice(1), { app, renderOrganizer, stateBadge, remember, poll, billSignature, setPoller });
   if (parts[0] === 'admin') return adminView(parts.slice(1), { app });
   return homeView();

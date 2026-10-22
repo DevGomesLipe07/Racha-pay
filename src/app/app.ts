@@ -3,6 +3,7 @@
 import type { Server } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { unauthorized } from './errors.ts';
+import { buildOpenApi } from './openapi.ts';
 import { fileURLToPath } from 'node:url';
 import { createHttpServer } from '../infra/http/server.ts';
 import { Router } from '../infra/http/router.ts';
@@ -57,6 +58,8 @@ export function buildRouter(deps: AppDeps): Router {
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw unauthorized();
     return { status: 200, text: deps.metrics.render(), contentType: 'text/plain; version=0.0.4; charset=utf-8' };
   });
+
+  router.get('/openapi.json', async () => ({ status: 200, body: buildOpenApi(deps.config.PUBLIC_BASE_URL) }));
 
   router.get('/v1/config', async () => ({
     status: 200,

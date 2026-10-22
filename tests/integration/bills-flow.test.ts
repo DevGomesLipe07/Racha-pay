@@ -210,7 +210,10 @@ test('Web/PWA: serve o app com CSP estrita e não sai da pasta public', async ()
   assert.match(home.headers.get('content-type') ?? '', /text\/html/);
   assert.match(home.headers.get('content-security-policy') ?? '', /script-src 'self'/);
   const html = await home.text();
-  assert.doesNotMatch(html, /<script>|style=/, 'sem script nem estilo inline');
+  // Todo <script> precisa ter src (nada inline), em qualquer caixa; nenhum atributo style.
+  const scripts = [...html.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]);
+  assert.ok(scripts.length > 0 && scripts.every((s) => /\ssrc=/i.test(s)), 'sem script inline');
+  assert.doesNotMatch(html, /\sstyle\s*=/i, 'sem estilo inline');
   assert.equal((await fetch(`${app.base}/app.js`)).status, 200);
   assert.equal((await fetch(`${app.base}/vendor/qrcode.mjs`)).status, 200);
   for (const evil of ['/..%2f..%2fpackage.json', '/%2e%2e/%2e%2e/.env', '/../src/config.ts', '/vendor/../../package.json']) {

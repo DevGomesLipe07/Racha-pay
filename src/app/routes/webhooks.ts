@@ -15,7 +15,7 @@ import { auditAllowed, preAuthorize } from '../guard.ts';
 import { param, parseBody } from '../http-helpers.ts';
 import { routeKit } from './common.ts';
 
-const createSchema = z
+export const webhookEndpointSchema = z
   .object({
     url: z.string().min(8).max(2000),
     events: z.array(z.enum(WEBHOOK_EVENT_TYPES)).max(WEBHOOK_EVENT_TYPES.length).default([]),
@@ -40,7 +40,7 @@ export function registerWebhookRoutes(router: Router, deps: AppDeps): void {
   };
 
   router.post('/v1/webhook-endpoints', async (req) => {
-    const input = parseBody(createSchema, req);
+    const input = parseBody(webhookEndpointSchema, req);
     const body = await onTenant(req, 'webhooks.manage', async (client, tenantId) => {
       try {
         const created = await createEndpoint(client, tenantId, { url: input.url, events: input.events, ...(input.description ? { description: input.description } : {}) }, key, policy);

@@ -21,7 +21,7 @@ import { routeKit } from './common.ts';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-const receiptSchema = z.union([
+export const receiptSchema = z.union([
   z.object({ text: z.string().min(1).max(20_000) }).strict(),
   z
     .object({

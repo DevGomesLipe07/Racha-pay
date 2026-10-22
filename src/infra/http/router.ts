@@ -99,4 +99,9 @@ export class Router {
   count(): number {
     return this.routes.length;
   }
+
+  /** Rotas registradas (para documentação e teste de cobertura do OpenAPI). */
+  list(): { method: Method; pattern: string }[] {
+    return this.routes.map((r) => ({ method: r.method, pattern: r.pattern }));
+  }
 }

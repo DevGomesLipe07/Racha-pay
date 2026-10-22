@@ -1,6 +1,6 @@
 // Arquivos estáticos da Web/PWA (sem build). Só serve arquivos dentro de `root`; nada de listagem.
 
-import { readFile, stat } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { SECURITY_HEADERS } from './server.ts';
@@ -37,10 +37,13 @@ export function createStaticHandler(root: string, opts: { https: boolean }) {
     const ext = extname(file).toLowerCase();
     const type = TYPES[ext];
     if (!type) return false;
+    let handle;
     try {
-      const info = await stat(file);
+      // Abre uma vez e checa/lê pelo mesmo descritor (sem janela entre "é arquivo?" e "ler").
+      handle = await open(file, 'r');
+      const info = await handle.stat();
       if (!info.isFile()) return false;
-      const body = await readFile(file);
+      const body = await handle.readFile();
       res.writeHead(200, {
         ...SECURITY_HEADERS,
         ...(opts.https ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {}),
@@ -52,6 +55,8 @@ export function createStaticHandler(root: string, opts: { https: boolean }) {
       return true;
     } catch {
       return false;
+    } finally {
+      await handle?.close().catch(() => undefined);
     }
   };
 }

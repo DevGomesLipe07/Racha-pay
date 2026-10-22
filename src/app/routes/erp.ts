@@ -16,7 +16,7 @@ import { routeKit } from './common.ts';
 import type { PoolClient } from '../../infra/db/pool.ts';
 import type { ServiceContext } from '../../modules/service-context.ts';
 
-const establishmentSchema = z
+export const establishmentSchema = z
   .object({ externalId: z.string().regex(/^[A-Za-z0-9._:-]{1,120}$/), name: z.string().trim().min(1).max(120) })
   .strict();
 

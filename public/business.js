@@ -2,7 +2,7 @@
 // organizador), divergências do ERP e outros casos, entregas de webhook e conciliação do dia.
 // Login com a chave de API do operador (rpk_…): fica só nesta aba (sessionStorage) e vai só no cabeçalho.
 
-import { createApi } from './api.js';
+import { createApi, UUID } from './api.js';
 import { brl, STATE_LABEL } from './format.js';
 import { actionButton, el, mount, toast } from './ui.js';
 
@@ -47,7 +47,7 @@ export async function businessView(parts, deps) {
   const api = createApi({ key: s.key, actor: s.actor });
   const [tab, id] = parts;
   try {
-    if (tab === 'm' && id) return await tableView(api, id, deps);
+    if (tab === 'm' && id && UUID.test(id)) return await tableView(api, id, deps);
     if (tab === 'casos') return await casesView(api, deps);
     if (tab === 'webhooks') return await webhooksView(api, deps);
     if (tab === 'dia') return await dayView(api, deps);
