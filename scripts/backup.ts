@@ -2,6 +2,8 @@
 // Dump completo (formato custom do pg_dump) com o papel de backup (BACKUP_DATABASE_URL, D22).
 // pg_dump vem do PATH ou de PG_BIN. Depois do dump, rode `npm run backup:verify` — backup sem restore
 // testado não conta como backup.
+// Use pg_dump/pg_restore da MESMA versão major do servidor: um pg_dump mais novo grava parâmetros
+// (ex.: transaction_timeout, PG 17+) que um servidor mais antigo não aceita na restauração.
 
 import { statSync } from 'node:fs';
 import { parseArgs } from 'node:util';
