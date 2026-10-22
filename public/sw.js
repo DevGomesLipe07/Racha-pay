@@ -1,8 +1,8 @@
 // Service worker: guarda só o "casco" do app para abrir offline. A API (/v1) nunca é cacheada —
 // valores e estados sempre vêm do servidor.
 
-const CACHE = 'rachapay-shell-v2';
-const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/business.js', '/ui.js', '/api.js', '/format.js', '/vendor/qrcode.mjs', '/manifest.webmanifest', '/icon.svg'];
+const CACHE = 'rachapay-shell-v3';
+const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/business.js', '/admin.js', '/ui.js', '/api.js', '/format.js', '/vendor/qrcode.mjs', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -4,6 +4,7 @@
 
 import { createApi, newKey } from './api.js';
 import { businessView } from './business.js';
+import { adminView } from './admin.js';
 import { brl, KIND_LABEL, MODE_LABEL, parseMoney, parsePercentBp, pct, PAYMENT_LABEL, STATE_LABEL } from './format.js';
 import { actionButton, el, mount, qrSvg, storage, toast } from './ui.js';
 
@@ -21,6 +22,7 @@ function route() {
   if (parts[0] === 'o' && parts[1] && parts[2]) return organizerView(parts[1], parts[2]);
   if (parts[0] === 's' && parts[1] && parts[2]) return guestView(parts[1], parts[2]);
   if (parts[0] === 'b') return businessView(parts.slice(1), { app, renderOrganizer, stateBadge, remember, poll, billSignature, setPoller });
+  if (parts[0] === 'admin') return adminView(parts.slice(1), { app });
   return homeView();
 }
 
