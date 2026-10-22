@@ -17,9 +17,13 @@ Escopos de chave usados pela Policy Engine: `bills:read`, `bills:write`, `paymen
 
 ## Rotas
 
+A especificação completa e sempre atualizada está em **`GET /openapi.json`** (OpenAPI 3.1, gerada dos mesmos schemas que validam as requisições; um teste garante que toda rota está documentada).
+
 ```
-GET  /health  /ready  /v1/config
+GET  /health  /ready  /v1/config  /openapi.json
 GET  /metrics                                 Prometheus (Bearer ADMIN_TOKEN)
+PUT  /v1/bills/{id}/pix                       chave Pix do organizador (D23); null remove
+GET  /v1/bills/{id}/participants/{pid}/pix    Pix copia e cola da parte, com o valor que falta
 POST /v1/bills                                criar (anônimo = Pessoal; chave = tenant; establishmentId opcional)
 GET  /v1/bills?open=&state=&establishmentId=  lista do tenant (chave de API; painel Business)
 POST /v1/bills/{id}/anonymize                 LGPD: titular pede anonimização (humano; D21)
@@ -46,7 +50,7 @@ GET  /v1/metrics     GET /v1/skills
 
 A Web/PWA é servida em `/` (arquivos de `public/`, CSP estrita, sem build). O **painel do estabelecimento** fica em `/#/b`: login com chave de operador (`rpk_…`, de preferência `actor-type HUMAN` para poder confirmar pagamentos no caixa), guardada só na aba (sessionStorage).
 
-Casos CBR do tenant Pessoal (que não tem chave de API): o administrador da plataforma usa `GET /v1/cbr/cases?tenantId=…` e `POST /v1/cbr/cases/{id}/resolve?tenantId=…`.
+Casos CBR do tenant Pessoal (que não tem chave de API): o administrador da plataforma usa `GET /v1/cbr/cases?tenantId=…` e `POST /v1/cbr/cases/{id}/resolve?tenantId=…`, ou o **painel do administrador** em `/#/admin` (regras compartilhadas com quatro olhos, casos do Pessoal, métricas; login com `ADMIN_TOKEN` + identificador de quem opera).
 
 ### Pagamentos
 
@@ -114,7 +118,7 @@ Eventos: `bill.created, split.confirmed, payment.created, payment.confirmed, pay
 ## Integrar um PSP real (próximo grande passo)
 
 1. Escolher PSP com Pix + split de recebíveis, contrato e credenciais de sandbox.
-2. Implementar `PaymentProvider` (`src/modules/payments/providers.ts`): `createPayment` (cobrança Pix/checkout tokenizado) e `verifyWebhook` (assinatura do PSP → `ProviderEvent`), e registrá-lo em `createProviderRegistry`.
+2. Implementar `PaymentProvider` (`src/modules/payments/providers.ts`): `createPayment` (cobrança Pix/checkout tokenizado) e `verifyWebhook` (assinatura do PSP → `ProviderEvent`), e registrá-lo em `createProviderRegistry`. O adapter precisa passar no **kit de contrato** `tests/contract/payment-provider.contract.ts` (referência única, normalização de eventos, recusa sem autenticação/adulterado/replay/malformado) — o sandbox já passa; basta escrever as fixtures do PSP.
 3. O fluxo em duas fases já existe: `CREATED` com a conta travada → chamada ao PSP **fora** da trava → `PENDING` com a referência e roteamento do webhook.
 4. Estorno via API do PSP em `requestProviderRefund` (hoje: `501 REFUND_NOT_AVAILABLE` para provedor não implementado).
 5. Liquidação/split financeiro: configurada no PSP; o dinheiro não passa pela conta do RachaPay.

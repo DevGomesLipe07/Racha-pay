@@ -4,6 +4,42 @@ Registra só o que foi **efetivamente feito e provado**. Status permitidos: IMPL
 
 ---
 
+## Ciclo 3 — 22/10/2026 — tudo o que não depende de terceiros
+
+**Objetivo:** pedido do proprietário: "prossiga com tudo o que não depende de terceiros". Ordem por valor.
+
+| Entrega | Prova |
+|---|---|
+| **Pix do organizador (D23):** QR + copia e cola com o valor da parte, sem PSP e sem tarifa; chave validada (CPF/CNPJ com dígito, telefone, e-mail, aleatória), mascarada, apagada na anonimização | gerador reproduz **o exemplo oficial do Banco Central** byte a byte (CRC `1D3D`); integração (valor exato, valor restante depois de pagamento parcial, permissões, anonimização); E2E com o QR na tela do convidado |
+| **Painel do administrador da plataforma** (`#/admin`): regras compartilhadas (propor, revisar, aprovar, ativar, revogar), casos do tenant Pessoal, métricas | E2E: a autora é barrada ao aprovar a própria regra crítica, outra pessoa aprova e ativa, a API passa a resolver a regra nova; caso resolvido pela tela |
+| **Kit de contrato para PSP** (`tests/contract/payment-provider.contract.ts`) | sandbox passa nos 5 testes; um adapter real (ex.: Asaas) só precisa das fixtures dele |
+| **OpenAPI 3.1** em `/openapi.json`, gerado dos schemas Zod | teste: rotas documentadas = rotas registradas |
+| **Expiração de regras:** conhecimento com `valid_to` vencido passa a `EXPIRED` na rotina horária (a resolução já o ignorava) | integração: volta a valer a regra global e o status muda |
+| **Cadeia de dependências:** Dependabot com cooldown de 14 dias e sem major do runtime; `npm audit` de produção no CI; CodeQL `security-extended` | CodeQL apontou 3 alertas → corrigidos → **0 abertos**; `npm audit`: 0 vulnerabilidades |
+
+Falhas encontradas e corrigidas:
+
+1. **CodeQL:**
+   - o cliente montava a URL da API com o id vindo do link (um link malicioso poderia apontar outra rota); agora id e token do link são validados e o cliente só chama `/v1/…` sem `..`;
+   - leitura de arquivo estático com corrida entre "checar" e "ler";
+   - teste de script inline sensível a maiúsculas.
+2. **O relatório do dia usava a data do aparelho;** agora usa a do servidor (achado pelo E2E quando o dia virou).
+3. **CI:** o runner passou a trazer um `pg_dump` mais novo, que grava `transaction_timeout` e quebra a restauração no PostgreSQL 16. Agora o CI usa `pg_dump`/`pg_restore` da própria imagem `postgres:16`, e a documentação do backup avisa para usar a mesma versão do servidor.
+4. **Testes que estavam errados:**
+   - o exemplo do Banco Central mantém maiúsculas e minúsculas no nome;
+   - o campo de valor não tem zero à esquerda.
+
+Migration nova: `0009_organizer_pix.sql`.
+
+```
+npm run test:unit        → 96 testes, 96 pass
+npm run test:integration → 61 testes, 61 pass
+npm run test:e2e         → 3 testes, 3 pass (pessoal com Pix, painel Business, painel admin)
+GitHub Actions (main)    → ci: success (unit ×2, integration+E2E+backup, docker) · codeql: success, 0 alertas
+```
+
+---
+
 ## Ciclo 2 — 21/10/2026 — publicação e pendências de maior valor
 
 **Objetivo:** fazer o que antes estava "para o TI" e fechar as maiores pendências, na ordem de impacto (pedido do proprietário: "faça tudo o que você pode, priorizando as maiores pendências").
@@ -152,7 +188,8 @@ O que os testes provam (resumo):
 - Policy Engine com auditoria; IA barrada em toda ação financeira crítica; ações humanas exigem chave `HUMAN`.
 - Expert Library com governança completa e CBR com aprendizado controlado.
 - Webhooks de saída (outbox, assinatura, D17, SSRF) e ERP Gateway canônico.
-- Web/PWA (organizador e convidado) e **painel web Business** (`#/b`).
+- Web/PWA (organizador e convidado, com **Pix do organizador por QR/copia e cola**), **painel web Business** (`#/b`) e **painel do administrador** (`#/admin`).
+- OpenAPI 3.1 em `/openapi.json`; kit de contrato para PSP; Dependabot, `npm audit` e CodeQL no GitHub.
 - IA como apoio: leitura de cupom por texto (determinística), explicação da conciliação, manifesto de skills; IA desligada por padrão.
 - Métricas North Star e conciliação do dia por estabelecimento.
 - LGPD: retenção e anonimização (D21), pedido do titular.
@@ -163,7 +200,6 @@ O que os testes provam (resumo):
 
 - **Leitura de cupom por foto (IA)**: adapter pronto e testado contra servidor falso; **não testado contra a API real da Anthropic** (falta `ANTHROPIC_API_KEY` neste ambiente). Modelo padrão `claude-sonnet-5-5`.
 - **Escopos compartilhados da Expert Library**: o banco exige a marca de administrador na sessão, mas quem põe a marca é a aplicação (depois de validar o `ADMIN_TOKEN`) — defesa em profundidade menor que a do resto do RLS.
-- **Painel do administrador da plataforma**: governança da Expert Library e casos do tenant Pessoal funcionam pela API (`ADMIN_TOKEN`), sem tela.
 - **Retenção (D21)** passa por todos os tenants a cada hora — adequado para centenas de tenants; para dezenas de milhares, paginar por tenant.
 
 ## BLOQUEADO
@@ -176,9 +212,8 @@ O que os testes provam (resumo):
 ## PENDENTE
 
 1. **Ambiente de produção**: provedor de hospedagem e PostgreSQL gerenciado, domínio com https, segredos — exige conta e decisão do proprietário (custo).
-2. Painel web do administrador da plataforma (hoje via API).
-3. Contas de usuário opcionais e notificações (WhatsApp/push), se o piloto pedir.
-4. ML, RAG, MCP e agentes: só com dados e necessidade comprovada.
+2. Contas de usuário opcionais e notificações (WhatsApp/push), se o piloto pedir.
+3. ML, RAG, MCP e agentes: só com dados e necessidade comprovada.
 
 ## PARA O TI PUBLICAR
 

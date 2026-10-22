@@ -90,6 +90,25 @@ test('banco: conhecimento não pula etapas nem muda conteúdo, mesmo por SQL dir
   assert.equal((await api(app, 'POST', `/v1/knowledge/${k.id}/transition`, { as: t.ana, body: { to: 'APPROVED' } })).status, 200);
 });
 
+test('regra com validade vencida deixa de valer e a rotina marca EXPIRED', async () => {
+  const t = await tenantWithKeys();
+  const k = (await api(app, 'POST', '/v1/knowledge', {
+    as: t.ana,
+    body: { key: 'IDEMPOTENCY.TTL', scopeType: 'TENANT', content: { hours: 6 }, rationale: 'campanha curta', validFrom: '2026-10-21T00:00:00.000Z', validTo: '2026-10-25T00:00:00.000Z' },
+  })).body.knowledge;
+  for (const to of ['REVIEW', 'APPROVED', 'ACTIVE']) await api(app, 'POST', `/v1/knowledge/${k.id}/transition`, { as: t.ana, body: { to } });
+  assert.deepEqual((await api(app, 'GET', '/v1/knowledge/resolve?key=IDEMPOTENCY.TTL', { as: t.system })).body.resolved.content, { hours: 6 });
+  app.clock.set('2026-10-26T00:00:00.000Z');
+  try {
+    assert.deepEqual((await api(app, 'GET', '/v1/knowledge/resolve?key=IDEMPOTENCY.TTL', { as: t.system })).body.resolved.content, { hours: 24 }, 'volta a valer a regra global');
+    await app.runRetention();
+    const list = await api(app, 'GET', '/v1/knowledge?key=IDEMPOTENCY.TTL', { as: t.system });
+    assert.equal(list.body.knowledge.find((x: { id: string }) => x.id === k.id).status, 'EXPIRED');
+  } finally {
+    app.clock.set('2026-10-21T12:00:00.000Z');
+  }
+});
+
 test('administrador da plataforma governa escopos compartilhados; tenant não mexe neles', async () => {
   const t = await tenantWithKeys();
   const k = await api(app, 'POST', '/v1/knowledge', { as: admin('ana'), body: { key: 'PAYMENT.EXPIRY', scopeType: 'SEGMENT', scopeValue: 'TRAVEL', content: { sandboxMinutes: 60, manualMinutes: 20160 }, rationale: 'viagem demora mais' } });

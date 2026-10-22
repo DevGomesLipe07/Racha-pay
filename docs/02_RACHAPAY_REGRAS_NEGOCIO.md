@@ -1,6 +1,6 @@
 # 02 — Regras de negócio
 
-> **Estado em 21/10/2026:** regras normativas — governam o comportamento do código; o que já está implementado e provado fica em `04_RACHAPAY_IMPLEMENTATION_LOG.md`. As lacunas encontradas na análise foram decididas pelo proprietário em 21/10/2026 e estão na seção **Decisões D1–D22** no fim; quando uma decisão completa ou muda uma regra acima, a regra cita a decisão.
+> **Estado em 21/10/2026:** regras normativas — governam o comportamento do código; o que já está implementado e provado fica em `04_RACHAPAY_IMPLEMENTATION_LOG.md`. As lacunas encontradas na análise foram decididas pelo proprietário em 21/10/2026 e estão na seção **Decisões D1–D23** no fim; quando uma decisão completa ou muda uma regra acima, a regra cita a decisão.
 
 As regras parametrizáveis vivem na **Expert Library** (`knowledge`), semeadas por `migrations/0003_seed_knowledge.sql`. Mudança de regra = nova versão via API (DRAFT → REVIEW → APPROVED → ACTIVE), nunca edição de código ou SQL.
 
@@ -65,7 +65,7 @@ Exceções viram casos (`OVERPAYMENT, LATE_CONFIRMATION, OUT_OF_ORDER_EVENT, CHA
 
 Rachas completamente quitados por mês (`GET /v1/metrics`), com taxa de conclusão, participantes médios, mediana até quitação, TPV e exceções.
 
-## Decisões D1–D22 (proprietário, 21/10/2026)
+## Decisões D1–D23 (proprietário, 21/10/2026)
 
 Lacunas encontradas na análise de 20/10/2026, decididas e agora normativas.
 
@@ -105,4 +105,5 @@ Lacunas encontradas na análise de 20/10/2026, decididas e agora normativas.
 - **D20 — Novo link de convidado** (21/10/2026). O token só existe em hash, então não é recuperável; o organizador pode emitir um novo (`POST /v1/bills/{id}/share-links`), e o anterior continua válido.
 - **D21 — LGPD: retenção e anonimização** (21/10/2026). Dado pessoal = nomes de participantes e textos livres (título, descrição de item, mesa). Regra `RETENTION.PERSONAL_DATA` (Expert Library): anonimiza 180 dias depois de quitada/cancelada e 365 dias depois da última atividade em conta não concluída sem pagamento em andamento. Anonimizar troca por rótulos neutros ("Participante 1", "Item 1", "Conta anonimizada"), revoga os links e apaga respostas de idempotência guardadas. O ledger não guarda nomes (só ids): a cadeia e a prova financeira continuam íntegras. O titular pode pedir antes (`POST /v1/bills/{id}/anonymize`, humano, sem pagamento em andamento). Identificador de operador (`X-Actor-Id`) na auditoria é mantido (interesse legítimo; recomenda-se usar apelido, não nome completo).
 - **D22 — Papel de backup** (21/10/2026). `rachapay_backup`: só leitura (`pg_read_all_data`), **com BYPASSRLS** — o `pg_dump` precisa ler todas as linhas e o RLS forçado bloqueia os outros papéis. Uso exclusivo da rotina de backup; nunca na aplicação. Backup só conta se o restore for verificado (`npm run backup:verify`).
+- **D23 — Pix do organizador** (22/10/2026). Em conta `ORGANIZER_COLLECTS`, o organizador pode cadastrar uma chave Pix (opcional). Cada convidado recebe um Pix estático (BR Code do Banco Central) com o **valor que falta da própria parte**, calculado no servidor, e um identificador que aparece no extrato do organizador. O dinheiro vai direto para o organizador, sem PSP e sem tarifa; a confirmação continua manual (o organizador toca "Recebi"). A chave é dado pessoal: aparece mascarada só para quem administra, nunca para o convidado, e some na anonimização (D21). A interface recomenda chave aleatória ou e-mail em vez de CPF.
 - **D17 — Retentativa de webhook de saída** (21/10/2026). 12 tentativas, 10 s dobrando, intervalo máximo 6 h: janela total ≈ 5,7 h, depois `DEAD` (reprocessável). Regra `WEBHOOK.RETRY` na Expert Library. Resolve a conta impossível "8 tentativas … até 6 h".

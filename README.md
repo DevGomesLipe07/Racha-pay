@@ -6,7 +6,14 @@ Plataforma de divisão, cobrança, pagamento e conciliação de despesas compart
 
 Monólito modular em TypeScript sobre Node.js 22, PostgreSQL como fonte da verdade, multi-tenant com RLS, API-first, ledger encadeado por hash, Expert Library versionada, memória de casos (CBR) e IA como apoio substituível — nunca como autoridade financeira.
 
-> **Estado em 21/10/2026:** implementado e testado, com 144 testes (84 unitários, 58 de integração contra PostgreSQL real e 2 E2E no Chromium) e CI verde no GitHub, incluindo o build Docker e o backup com restore verificado. Isso cobre a API, a Web/PWA, o painel do estabelecimento, os pagamentos manual e sandbox, o ledger verificável, os webhooks, o ERP canônico, a Expert Library, o CBR, a IA como apoio, a LGPD, as métricas Prometheus e o backup. Bloqueados por dependência externa: pagamento real via PSP e adapter nativo do NexFlow. Detalhes em `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md`.
+> **Estado em 22/10/2026:** implementado e testado, com 160 testes (96 unitários, 61 de integração contra PostgreSQL real e 3 E2E no Chromium). O CI está verde no GitHub (build Docker, backup com restore verificado, CodeQL sem alertas). Isso cobre:
+> - a API (documentada em `/openapi.json`) e a Web/PWA, com Pix do organizador por QR;
+> - os painéis do estabelecimento e do administrador;
+> - os pagamentos manual e sandbox e o ledger verificável;
+> - os webhooks, o ERP canônico, a Expert Library e o CBR;
+> - a IA como apoio, a LGPD, as métricas e o backup.
+>
+> Bloqueados por dependência externa: pagamento real via PSP, adapter nativo do NexFlow e hospedagem. Detalhes em `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md`.
 
 ---
 
@@ -56,6 +63,8 @@ Primeiro cliente Business: `MIGRATION_DATABASE_URL=… npm run tenant:create -- 
 | Serviço, gorjeta, desconto, arredondamento vindos da Expert Library, com proveniência | ✅ |
 | Prévia, confirmação, "mais uma rodada" (complemento), destravar, cancelar | ✅ |
 | Convidado vê a própria parte e paga: Pix/dinheiro ao organizador (ele confirma) ou sandbox de teste | ✅ |
+| Pix do organizador: QR e copia e cola com o valor exato da parte (BR Code, sem PSP e sem tarifa) | ✅ |
+| Painel do administrador da plataforma (`/#/admin`): regras com quatro olhos, casos, métricas | ✅ |
 | Conciliação e quitação determinísticas; parte do organizador já quitada; selo RACHA QUITADO | ✅ |
 | Estorno, chargeback, reabertura, pagamento a maior, devolução manual | ✅ |
 | Ledger encadeado e imutável, com reconstrução do estado | ✅ |
@@ -95,7 +104,7 @@ src/
 public/                   Web/PWA (sem build, CSP estrita)
 migrations/               SQL versionado (checksum protege contra edição)
 scripts/                  db-init.sql, migrate, create-tenant, backup, verify-backup
-tests/unit|integration|e2e
+tests/unit|integration|e2e|contract   (contract = kit que todo PSP precisa passar)
 docs/                     constituição, regras, integrações, log de implementação
 ```
 
@@ -104,7 +113,7 @@ docs/                     constituição, regras, integrações, log de implemen
 Leia nesta ordem — cada um é governado pelos anteriores:
 
 1. `docs/01_RACHAPAY_CONSTITUICAO.md` — princípios inegociáveis e onde são garantidos no código
-2. `docs/02_RACHAPAY_REGRAS_NEGOCIO.md` — regras de divisão, conciliação, estados e decisões D1–D22
+2. `docs/02_RACHAPAY_REGRAS_NEGOCIO.md` — regras de divisão, conciliação, estados e decisões D1–D23
 3. `docs/03_RACHAPAY_ROADMAP_INTEGRACOES.md` — API, contrato ERP canônico, webhooks, PSP, roadmap
 4. `docs/04_RACHAPAY_IMPLEMENTATION_LOG.md` — o que foi feito, provado e o que falta
 

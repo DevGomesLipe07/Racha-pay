@@ -55,9 +55,16 @@ export async function runRetention(pool: Pool, clock: Clock, logger: Logger, lim
   await pool.query('DELETE FROM rate_limit_hits WHERE window_start < $1', [new Date(now.getTime() - 2 * 3_600_000)]);
   let anonymized = 0;
   let purgedKeys = 0;
+  // Conhecimento com validade vencida já não vale na resolução; aqui o status passa a dizer isso.
+  const expireKnowledge = (client: PoolClient) =>
+    client.query("UPDATE knowledge SET status = 'EXPIRED' WHERE status = 'ACTIVE' AND valid_to IS NOT NULL AND valid_to <= $1", [now]);
+  await withScope(pool, { kind: 'platform' }, expireKnowledge).catch((error: unknown) =>
+    logger.error('knowledge_expiry_failed', { message: (error as Error).message }),
+  );
   for (const { tenant_id: tenantId } of tenants) {
     try {
       const done = await withScope(pool, { kind: 'tenant', tenantId }, async (client) => {
+        await expireKnowledge(client);
         const purged = await client.query('DELETE FROM idempotency_keys WHERE expires_at < $1', [now]);
         const rule = await resolveKnowledge(client, 'RETENTION.PERSONAL_DATA', { tenantId }, now);
         const { rows } = await client.query<{ id: string }>(
